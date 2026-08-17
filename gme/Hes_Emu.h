@@ -32,6 +32,10 @@ public:
 
 	static gme_type_t static_type() { return gme_hes_type; }
 
+	// nt-chiptune-player fork addition: read-only per-channel state snapshot,
+	// delegated to the APU (see gme_hes_channel_state in gme.h).
+	void channel_state( int i, gme_hes_channel_state_t* out ) const { apu.get_osc_state( i, out ); }
+
 public:
 	Hes_Emu();
 	~Hes_Emu();

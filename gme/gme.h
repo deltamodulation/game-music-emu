@@ -187,6 +187,32 @@ BLARGG_EXPORT void gme_mute_voice( Music_Emu*, int index, int mute );
 voices, 0 unmutes them all, 0x01 mutes just the first voice, etc. */
 BLARGG_EXPORT void gme_mute_voices( Music_Emu*, int muting_mask );
 
+/* nt-chiptune-player fork addition (LGPL-2.1 modification, see AGENTS.md /
+project README for upstream policy): read-only per-channel state snapshot for
+the HES (PC Engine HuC6280 PSG) emulator. Not part of upstream gme_type_t-
+generic API -- HES-specific because the raw register layout (period/noise/
+balance) needed for pitch and pan reconstruction has no cross-format
+equivalent in this codebase. */
+typedef struct gme_hes_channel_state_t
+{
+	unsigned char enabled;     /* control bit7: oscillator enabled */
+	unsigned char dda_mode;    /* control bit6: direct D/A mode (no tone, raw DAC writes) */
+	unsigned char noise_on;    /* noise bit7 (channels 4/5 only): noise mode enabled */
+	unsigned char channel_vol; /* control bits4-0: channel volume, 0-31 */
+	unsigned char balance;     /* raw balance register: bits7-4 = left weight, bits3-0 = right weight */
+	unsigned short period;     /* 12-bit waveform period register (0 = silent/keycode invalid) */
+	unsigned char noise_freq;  /* noise bits4-0 (channels 4/5 only): noise frequency, 0-31 */
+	short gain_l;              /* synthesized final linear gain, left */
+	short gain_r;              /* synthesized final linear gain, right */
+} gme_hes_channel_state_t;
+
+/* Fill *out with channel `index`'s current state (0 <= index < gme_voice_count()).
+Returns NULL on success. Returns an error string if `me` is not a HES emulator
+or `index` is out of range; *out is left unmodified in that case.
+Not thread-safe: call only from the same thread as gme_play(), and only
+between gme_play() calls (not concurrently with one). */
+BLARGG_EXPORT gme_err_t gme_hes_channel_state( Music_Emu const*, int index, gme_hes_channel_state_t* out );
+
 /* Disable/Enable echo effect for SPC files */
 /* Available since 0.6.4 */
 BLARGG_EXPORT void gme_disable_echo( Music_Emu*, int disable );
