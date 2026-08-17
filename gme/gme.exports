@@ -5,6 +5,7 @@ gme_delete
 gme_enable_accuracy
 gme_equalizer
 gme_free_info
+gme_hes_channel_state
 gme_identify_extension
 gme_identify_file
 gme_identify_header

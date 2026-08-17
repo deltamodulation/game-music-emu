@@ -6,6 +6,7 @@
 
 #include "blargg_common.h"
 #include "Blip_Buffer.h"
+#include "gme.h" // nt-chiptune-player fork addition: gme_hes_channel_state_t
 
 struct Hes_Osc
 {
@@ -46,6 +47,10 @@ public:
 	void write_data( blip_time_t, int addr, int data );
 
 	void end_frame( blip_time_t );
+
+	// nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
+	// current raw state, for visualization (see gme_hes_channel_state in gme.h).
+	void get_osc_state( int index, gme_hes_channel_state_t* out ) const;
 
 public:
 	Hes_Apu();

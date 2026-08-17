@@ -299,6 +299,28 @@ void Hes_Apu::write_data( blip_time_t time, int addr, int data )
 	}
 }
 
+// nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
+// raw registers + synthesized gain, for visualization (see gme_hes_channel_state
+// in gme.h). Register bit layout matches write_data() above:
+// control bit7 = enabled, bit6 = DDA mode, bits4-0 = channel volume;
+// noise bit7 = noise mode (channels 4/5 only), bits4-0 = noise frequency;
+// balance bits7-4 = left weight, bits3-0 = right weight; volume[0/1] is the
+// already-synthesized linear gain computed by balance_changed().
+void Hes_Apu::get_osc_state( int index, gme_hes_channel_state_t* out ) const
+{
+	require( (unsigned) index < osc_count );
+	Hes_Osc const& osc = oscs [index];
+	out->enabled     = (osc.control & 0x80) != 0;
+	out->dda_mode    = (osc.control & 0x40) != 0;
+	out->noise_on    = (osc.noise   & 0x80) != 0;
+	out->channel_vol = osc.control & 0x1F;
+	out->balance     = osc.balance;
+	out->period      = osc.period;
+	out->noise_freq  = osc.noise & 0x1F;
+	out->gain_l      = osc.volume [0];
+	out->gain_r      = osc.volume [1];
+}
+
 void Hes_Apu::end_frame( blip_time_t end_time )
 {
 	Hes_Osc* osc = &oscs [osc_count];
