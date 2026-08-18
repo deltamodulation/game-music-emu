@@ -1,4 +1,5 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-08-17, 2026-08-19 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Hes_Emu.h"
 
@@ -554,7 +555,7 @@ blargg_err_t Hes_Emu::run_clocks( blip_time_t& duration_, int )
 // gme_hes_channel_state (declared in gme.h). This file is only compiled when
 // USE_GME_HES is enabled (see gme/CMakeLists.txt), so no #ifdef guard is
 // needed here.
-extern "C" gme_err_t gme_hes_channel_state( Music_Emu const* me, int index, gme_hes_channel_state_t* out )
+extern "C" BLARGG_EXPORT gme_err_t gme_hes_channel_state( Music_Emu const* me, int index, gme_hes_channel_state_t* out )
 {
 	if ( !me || !out )
 		return "NULL parameter";
@@ -562,6 +563,6 @@ extern "C" gme_err_t gme_hes_channel_state( Music_Emu const* me, int index, gme_
 		return "Not a HES emulator";
 	if ( (unsigned) index >= (unsigned) Hes_Apu::osc_count )
 		return "Voice index out of range";
-	((Hes_Emu const*) me)->channel_state( index, out );
+	static_cast<Hes_Emu const*>( me )->channel_state( index, out );
 	return 0;
 }

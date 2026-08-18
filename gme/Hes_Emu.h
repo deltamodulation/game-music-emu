@@ -1,6 +1,7 @@
 // TurboGrafx-16/PC Engine HES music file emulator
 
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-08-17, 2026-08-19 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef HES_EMU_H
 #define HES_EMU_H
 

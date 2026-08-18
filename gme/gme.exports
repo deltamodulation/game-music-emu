@@ -1,4 +1,5 @@
 # List of all exported symbols
+# Modified 2026-08-17, 2026-08-19 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 gme_autoload_playback_limit
 gme_clear_playlist
 gme_delete

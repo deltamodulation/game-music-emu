@@ -1,5 +1,7 @@
 /* Game music emulator library C interface (also usable from C++) */
 
+/* Modified 2026-08-17, 2026-08-19 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
+
 /* Game_Music_Emu 0.6.6 */
 #ifndef GME_H
 #define GME_H
@@ -187,12 +189,19 @@ BLARGG_EXPORT void gme_mute_voice( Music_Emu*, int index, int mute );
 voices, 0 unmutes them all, 0x01 mutes just the first voice, etc. */
 BLARGG_EXPORT void gme_mute_voices( Music_Emu*, int muting_mask );
 
-/* nt-chiptune-player fork addition (LGPL-2.1 modification, see AGENTS.md /
-project README for upstream policy): read-only per-channel state snapshot for
-the HES (PC Engine HuC6280 PSG) emulator. Not part of upstream gme_type_t-
-generic API -- HES-specific because the raw register layout (period/noise/
-balance) needed for pitch and pan reconstruction has no cross-format
-equivalent in this codebase. */
+/* nt-chiptune-player fork addition (LGPL-2.1 modification; see the "Design
+rationale" section of NTCP-MODIFICATIONS.md at the root of this repository
+for the rationale -- nt-chiptune-player's ADR 0023 covers the same ground in
+more detail, at
+https://github.com/deltamodulation/nt-chiptune-player/blob/main/docs/adr/0023-libgme-fork-minimal-c-api.md,
+if that repository happens to be accessible to you): read-only per-channel
+state snapshot for the HES (PC Engine HuC6280 PSG) emulator. Not part of
+upstream gme_type_t-generic API -- HES-specific because the raw register
+layout (period/noise/balance) needed for pitch and pan reconstruction has no
+cross-format equivalent in this codebase. */
+/* Struct layout is frozen for ABI compatibility with the nt-chiptune-player
+JNI bridge -- append new fields at the end only; never reorder, resize, or
+remove existing fields. */
 typedef struct gme_hes_channel_state_t
 {
 	unsigned char enabled;     /* control bit7: oscillator enabled */

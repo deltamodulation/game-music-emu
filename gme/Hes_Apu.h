@@ -1,6 +1,7 @@
 // Turbo Grafx 16 (PC Engine) PSG sound chip emulator
 
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-08-17, 2026-08-19 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef HES_APU_H
 #define HES_APU_H
 
