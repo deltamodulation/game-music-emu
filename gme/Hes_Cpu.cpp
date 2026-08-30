@@ -1,4 +1,5 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-08-30 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Hes_Cpu.h"
 
@@ -134,6 +135,15 @@ bool Hes_Cpu::run( hes_time_t end_time )
 branch_not_taken:
 	s_time -= 2;
 loop:
+	// NTCP fix (Issue #185): pc is uint_fast16_t (32-bit on MSVC/NDK) and is only
+	// masked back to 16 bits on taken branches and JMP/JSR/RTS/RTI. Straight-line
+	// execution through corrupted/illegal data (including the `default:` case
+	// below) never re-enters those paths, so pc can grow past 0xFFFF and index
+	// state_t::code_map (9 entries, covering only $0000-$11FFF) out of bounds --
+	// observed as a page-table-as-pointer read and SEGV in the instruction fetch
+	// below. Real HuC6280 hardware wraps PC at 16 bits; enforce that here every
+	// iteration regardless of how pc was last advanced.
+	pc &= 0xFFFF;
 
 	#ifndef NDEBUG
 	{

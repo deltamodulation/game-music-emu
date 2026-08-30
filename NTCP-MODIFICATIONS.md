@@ -90,3 +90,58 @@ Files touched: `gme/gme.h`, `gme/gme.exports`, `gme/Hes_Apu.h`,
 
 No functional/behavioral change in this update; golden-test bit-exactness of
 the HES decode path is preserved.
+
+### 2026-08-30 -- Fix out-of-bounds `code_map` read on corrupted/malformed HES data (SEGV)
+
+`gme/Hes_Cpu.cpp`, in `Hes_Cpu::run`: added `pc &= 0xFFFF;` immediately after the
+`loop:` label. This is the **first behavior-changing patch in this fork** -- the
+2026-08-17 and 2026-08-19 changes above were additions-only / no-op by design (see
+their entries and the "Design rationale" section, both of which describe only
+those two commits, not a blanket policy for all future changes to this fork).
+
+Root cause: `pc` is declared `uint_fast16_t`, which is a 32-bit type on both MSVC
+and Android NDK toolchains. It is masked back to 16 bits only on taken branches
+and on `JMP`/`JSR`/`RTS`/`RTI`. Straight-line execution through corrupted or
+out-of-spec instruction bytes -- including the pre-existing `default:` (illegal
+opcode) case, which upstream already treats as a 1-byte/2-cycle NOP and continues
+executing -- never touches those masking sites, so on malformed input `pc` can
+grow past `0xFFFF` without bound. `state_t::code_map` has exactly 9 entries,
+covering only address range `$00000`-`$11FFF`; once `pc >> page_shift` reaches 9,
+the read indexes past the end of `code_map` into adjacent struct fields. On MSVC
+x64 this reads `state_t::base`/`state_t::time` (an `int32_t` pair) as a pointer,
+and the next instruction fetch dereferences it, producing a SEGV. This is
+unrelated to opcode legality -- it reproduces even when the corrupted region is
+filled entirely with `$EA` (real-hardware NOP); what matters is that execution
+never re-enters a PC-masking site.
+
+The fix mirrors real HuC6280 hardware, which wraps the program counter at 16
+bits unconditionally, every cycle -- not only on branches/jumps.
+
+Verified locally (nt-chiptune-player coordinator, pre-push):
+- 18 corrupted-file repros + an 80-run fuzz sweep (98 runs total) against the
+  pre-fix build reproduced the SEGV; against the post-fix build, 0/98 crashed.
+- Well-formed files are bit-exact before and after: full-PCM-sample hashes for
+  Final Soldier and Gradius across 12 tracks x 30.7s (24 runs) match exactly.
+  This is expected -- well-formed HES data never drives `pc` past `$FFFF`, so the
+  added mask is a no-op on any file this engine already played correctly.
+
+Files touched: `gme/Hes_Cpu.cpp` (one-line fix + explanatory comment + in-file
+LGPL-2.1 §2(a) modification notice).
+
+## Known upstream bugs (not modified)
+
+Bugs found in upstream code during nt-chiptune-player development that this fork
+does **not** patch (out of scope for the fix that found them, or not yet
+prioritized). Listed here so they aren't rediscovered from scratch; see the
+linked issue for detail and status.
+
+- **`Hes_Emu::cpu_write` / `CPU_WRITE_FAST_` in `gme/hes_cpu_io.h` always test
+  `mmr[0]`, never the actual target page's mmr entry**, because `addr` is masked
+  to a page-local offset *before* `addr >> page_shift` is computed (the sibling
+  read path, `Hes_Emu::cpu_read`, gets this right by checking `mmr[]` *before*
+  masking). This does not cause any out-of-bounds access -- `addr` stays within
+  the masked page's bounds, and `mmr[0]` is a valid index -- so it is a
+  correctness/dispatch bug, not a memory-safety bug, and is unrelated to the
+  2026-08-30 SEGV fix above. Not fixed here (scope discipline for that fix); see
+  https://github.com/deltamodulation/nt-chiptune-player/issues/192 for the full
+  writeup and future fix plan.
