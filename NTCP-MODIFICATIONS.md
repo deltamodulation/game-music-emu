@@ -128,6 +128,50 @@ Verified locally (nt-chiptune-player coordinator, pre-push):
 Files touched: `gme/Hes_Cpu.cpp` (one-line fix + explanatory comment + in-file
 LGPL-2.1 §2(a) modification notice).
 
+### 2026-08-31 -- Fix `cpu_write` always dispatching on `mmr[0]` instead of the target page (Issue #192)
+
+`gme/hes_cpu_io.h`, in `Hes_Emu::cpu_write` and the sibling `CPU_WRITE_FAST_`
+macro: evaluate the target page (`addr >> page_shift`) *before* masking `addr`
+down to a page-local offset, instead of after. This is a **behavior-changing
+patch** (second one in this fork, after the 2026-08-30 SEGV fix above).
+
+Root cause: both `cpu_write` and `CPU_WRITE_FAST_` computed `write_pages [addr
+>> page_shift]` correctly (before masking), but then masked `addr &= page_size
+- 1` and only afterwards evaluated `mmr [addr >> page_shift]` to decide whether
+to dispatch to `cpu_write_()` (the special-I/O handler). Since the masked
+`addr` is always `< page_size`, `addr >> page_shift` is always `0` after
+masking, so the dispatch check always looked at `mmr[0]` regardless of which
+page was actually being written. The sibling read path, `Hes_Emu::cpu_read`,
+already gets this right -- it evaluates `mmr [addr >> page_shift]` before any
+masking (in fact `cpu_read` never masks `addr` at all, since it does not need
+a page-local offset). This was previously logged as a known-but-unfixed
+upstream bug (see `Hes_Emu::cpu_write` entry removed from "Known upstream
+bugs" below); memory safety was never at risk (`addr` stayed within the masked
+page's bounds, and `mmr[0]` is a valid index), so this is a pure
+correctness/dispatch fix, not a security fix.
+
+The fix: compute `page = addr >> page_shift` once, before masking `addr`, and
+use `page` (instead of the freshly-masked `addr >> page_shift`) in the `mmr[]`
+lookup. This mirrors `cpu_read`'s order of operations.
+
+Verified locally (nt-chiptune-player coordinator, pre-push):
+- Real-data regression: rendered tracks 0-40 (41 tracks each, 8s @ 48kHz
+  stereo) of Final Soldier and Gradius (82 renders total) with a pre-fix and a
+  post-fix build of `spike_hes2wav`; all 82 output WAV files are byte-for-byte
+  identical between the two builds (0/82 differ). This is consistent with the
+  bug never having been observed to affect real HES data (see Issue #192):
+  `write_pages[page]` being null (the precondition for the `mmr[]` check to
+  even run) combined with `mmr[page] != 0xFF` while `mmr[0] == 0xFF` (or vice
+  versa) apparently does not occur in these titles' actual mmr configurations.
+- `ctest` (core host-debug preset): 243/243 passed, including the HES golden
+  bit-exactness tests (`Golden.BitExactAgainstManifest` et al.), confirming no
+  regression in the existing golden-test corpus either.
+
+Files touched: `gme/hes_cpu_io.h` (four-line fix across `cpu_write` and
+`CPU_WRITE_FAST_` + in-file LGPL-2.1 §2(a) modification notice -- this file had
+no prior in-file notice, unlike its siblings, since it was untouched by the
+2026-08-17/2026-08-19 additions-only changes).
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork
@@ -135,13 +179,5 @@ does **not** patch (out of scope for the fix that found them, or not yet
 prioritized). Listed here so they aren't rediscovered from scratch; see the
 linked issue for detail and status.
 
-- **`Hes_Emu::cpu_write` / `CPU_WRITE_FAST_` in `gme/hes_cpu_io.h` always test
-  `mmr[0]`, never the actual target page's mmr entry**, because `addr` is masked
-  to a page-local offset *before* `addr >> page_shift` is computed (the sibling
-  read path, `Hes_Emu::cpu_read`, gets this right by checking `mmr[]` *before*
-  masking). This does not cause any out-of-bounds access -- `addr` stays within
-  the masked page's bounds, and `mmr[0]` is a valid index -- so it is a
-  correctness/dispatch bug, not a memory-safety bug, and is unrelated to the
-  2026-08-30 SEGV fix above. Not fixed here (scope discipline for that fix); see
-  https://github.com/deltamodulation/nt-chiptune-player/issues/192 for the full
-  writeup and future fix plan.
+(None at this time -- the `Hes_Emu::cpu_write` / `CPU_WRITE_FAST_` entry
+previously listed here was fixed on 2026-08-31; see above.)
