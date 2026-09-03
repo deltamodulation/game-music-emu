@@ -63,7 +63,7 @@ blargg_err_t Classic_Emu::set_sample_rate_( long rate )
 // Blip_Buffer::set_sample_rate preserves clock_rate_ and clears the buffer, and
 // Stereo_Buffer's stereo_added/was_stereo bookkeeping is reset by
 // Classic_Emu::start_track_. Not calling this leaves the upstream default
-// (1000 / 20 ms, set in set_sample_rate_ above) untouched, so behavior is
+// (50 ms, computed by set_sample_rate_ above) untouched, so behavior is
 // unchanged for every caller that does not opt in. `msec` is range-checked here
 // because upstream's Blip_Buffer::set_sample_rate computes
 // (new_rate * (msec + 1) + 999) / 1000 in `long`, which overflows on LLP64, and

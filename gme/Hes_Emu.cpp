@@ -570,9 +570,10 @@ extern "C" BLARGG_EXPORT gme_err_t gme_hes_channel_state( Music_Emu const* me, i
 
 // nt-chiptune-player fork addition (Issue #321): C API for
 // gme_hes_set_observe_interval_ms (declared in gme.h). Like the accessor above,
-// the type check uses gme_type_t rather than dynamic_cast because libgme is
-// built with RTTI disabled. The msec range check lives in
-// Classic_Emu::set_buffer_length_ms so that it also covers the C++ entry point.
+// the type check goes through gme_type_t, because libgme is built with RTTI
+// disabled and an RTTI-based cast would therefore not link. The msec range
+// check lives in Classic_Emu::set_buffer_length_ms so that it also covers the
+// C++ entry point.
 extern "C" BLARGG_EXPORT gme_err_t gme_hes_set_observe_interval_ms( Music_Emu* me, int msec )
 {
 	if ( !me )
