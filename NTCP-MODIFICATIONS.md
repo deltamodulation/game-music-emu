@@ -172,6 +172,29 @@ Files touched: `gme/hes_cpu_io.h` (four-line fix across `cpu_write` and
 no prior in-file notice, unlike its siblings, since it was untouched by the
 2026-08-17/2026-08-19 additions-only changes).
 
+### 2026-09-03 -- Rename `CPU_WRITE_FAST_`'s local `page_` to `hes_write_page_` (Issue #221)
+
+`gme/hes_cpu_io.h`, in the `CPU_WRITE_FAST_` macro added by the 2026-08-31 patch
+above: renamed the macro-local variable `page_` to `hes_write_page_`. This is a
+**pure rename, no behavior change** -- naming cleanup only, deferred from PR #218
+(Issue #192's review, Round 1 L-2) to be bundled with the next fork change rather
+than spending a standalone fork commit on it.
+
+Rationale: nt-chiptune-player's codebase convention reserves a trailing `_` for
+member variables (e.g. `emu_track_ended_` / `warning_` / `ignore_silence_`), so a
+macro-local variable shaped like `page_` misleads a reader into thinking it is a
+member. `page_` is confined to the macro body -- confirmed via a fork-wide grep
+that no other file (`Hes_Cpu.cpp` / `Hes_Cpu.h` etc.) references an identifier
+named `page_`, so the rename cannot collide with or shadow anything.
+
+Verified locally (nt-chiptune-player coordinator, pre-push): `ctest` (core
+host-debug preset) full suite green, golden HES bit-exactness tests included --
+expected, since a macro-local rename cannot change generated code.
+
+Files touched: `gme/hes_cpu_io.h` (rename only, three occurrences within
+`CPU_WRITE_FAST_`; updated the file's in-file modification-notice date list to
+add 2026-09-03).
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

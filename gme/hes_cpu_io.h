@@ -1,4 +1,4 @@
-// Modified 2026-08-31 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
+// Modified 2026-08-31, 2026-09-03 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Hes_Emu.h"
 
@@ -73,14 +73,14 @@ inline byte const* Hes_Emu::cpu_set_mmr( int page, int bank )
 
 #define CPU_WRITE_FAST_( cpu, addr, data, time ) \
 {\
-	int page_ = addr >> page_shift;\
-	byte* out = cpu->write_pages [page_];\
+	int hes_write_page_ = addr >> page_shift;\
+	byte* out = cpu->write_pages [hes_write_page_];\
 	addr &= page_size - 1;\
 	if ( out )\
 	{\
 		out [addr] = data;\
 	}\
-	else if ( mmr [page_] == 0xFF )\
+	else if ( mmr [hes_write_page_] == 0xFF )\
 	{\
 		FLUSH_TIME();\
 		cpu->cpu_write_( addr, data );\
