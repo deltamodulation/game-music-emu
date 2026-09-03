@@ -2,6 +2,7 @@
 
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
 // Modified 2026-08-17, 2026-08-19 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
+// Modified 2026-09-04 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef HES_EMU_H
 #define HES_EMU_H
 
@@ -36,6 +37,11 @@ public:
 	// nt-chiptune-player fork addition: read-only per-channel state snapshot,
 	// delegated to the APU (see gme_hes_channel_state in gme.h).
 	void channel_state( int i, gme_hes_channel_state_t* out ) const { apu.get_osc_state( i, out ); }
+
+	// nt-chiptune-player fork addition (Issue #321): opt-in observation
+	// granularity, delegated to the Classic_Emu base (see
+	// gme_hes_set_observe_interval_ms in gme.h).
+	blargg_err_t set_observe_interval_ms( int msec ) { return set_buffer_length_ms( msec ); }
 
 public:
 	Hes_Emu();

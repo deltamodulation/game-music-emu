@@ -1,6 +1,7 @@
 /* Game music emulator library C interface (also usable from C++) */
 
 /* Modified 2026-08-17, 2026-08-19 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
+/* Modified 2026-09-04 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 
 /* Game_Music_Emu 0.6.6 */
 #ifndef GME_H
@@ -221,6 +222,22 @@ or `index` is out of range; *out is left unmodified in that case.
 Not thread-safe: call only from the same thread as gme_play(), and only
 between gme_play() calls (not concurrently with one). */
 BLARGG_EXPORT gme_err_t gme_hes_channel_state( Music_Emu const*, int index, gme_hes_channel_state_t* out );
+
+/* nt-chiptune-player fork addition (Issue #321): set the internal emulation-batch
+length, in milliseconds, of a HES emulator. That batch length is what bounds the
+time resolution of gme_hes_channel_state: register state can only be observed at
+batch boundaries, so a shorter batch means finer observation. Valid range is
+1..1000 ms; an error string is returned outside that range, if `me` is not a HES
+emulator, or if no buffer has been allocated yet.
+
+Call AFTER loading a file and BEFORE gme_start_track (it clears the buffer, so
+calling it mid-playback would drop already-synthesized samples). Not calling it at
+all leaves the upstream default (50 ms) untouched -- this API is strictly opt-in
+and changes nothing for callers that ignore it.
+
+Not thread-safe: call only from the same thread as gme_play(), and not
+concurrently with one. */
+BLARGG_EXPORT gme_err_t gme_hes_set_observe_interval_ms( Music_Emu*, int msec );
 
 /* Disable/Enable echo effect for SPC files */
 /* Available since 0.6.4 */

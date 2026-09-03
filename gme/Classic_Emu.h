@@ -1,6 +1,7 @@
 // Common aspects of emulators which use Blip_Buffer for sound output
 
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-09-04 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef CLASSIC_EMU_H
 #define CLASSIC_EMU_H
 
@@ -39,6 +40,13 @@ private:
 	uint32_t clock_rate_;
 	unsigned buf_changed_count;
 	int const* voice_types;
+protected:
+	// nt-chiptune-player fork addition (Issue #321): opt-in observation
+	// granularity; see the definition in Classic_Emu.cpp. `protected` on purpose --
+	// the public surface of this shared base class stays unchanged for every
+	// Classic_Emu-derived format, and only the derived Hes_Emu re-exports it
+	// (see gme_hes_set_observe_interval_ms in gme.h).
+	blargg_err_t set_buffer_length_ms( int msec );
 };
 
 inline void Classic_Emu::set_buffer( Multi_Buffer* new_buf )

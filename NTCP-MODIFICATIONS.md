@@ -195,6 +195,67 @@ Files touched: `gme/hes_cpu_io.h` (rename only, three occurrences within
 `CPU_WRITE_FAST_`; updated the file's in-file modification-notice date list to
 add 2026-09-03).
 
+### 2026-09-04 -- Add opt-in `gme_hes_set_observe_interval_ms` C API (Issue #321)
+
+Adds a minimal, **additions-only** C API that lets the caller shorten the internal
+Blip_Buffer emulation-batch length of a HES emulator. Upstream fixes that batch at
+`1000 / 20` ms (50 ms) in `Classic_Emu::set_sample_rate_`, and because the
+emulator only advances the CPU/APU one whole batch at a time, 50 ms is also the
+finest resolution at which the `gme_hes_channel_state` accessor added on
+2026-08-17 can observe register state. nt-chiptune-player publishes its visualizer
+snapshot at 60 Hz, so any register change faster than 50 ms (a fast arpeggio, for
+instance) was structurally invisible to it.
+
+Files touched (all additions, no existing line modified):
+
+- `gme/Classic_Emu.h` / `gme/Classic_Emu.cpp`: new `protected` member
+  `blargg_err_t Classic_Emu::set_buffer_length_ms( int msec )`. It calls
+  `buf->set_sample_rate( sample_rate(), msec )`, which is safe to do *after* load
+  because upstream's `Blip_Buffer::set_sample_rate()` preserves `clock_rate_` and
+  clears the buffer. The member is `protected` on purpose: the public surface of
+  this shared base class is unchanged for every `Classic_Emu`-derived format.
+- `gme/Hes_Emu.h`: `Hes_Emu::set_observe_interval_ms( int )`, a one-line
+  re-export of the base member -- the only public exposure of the new capability.
+- `gme/Hes_Emu.cpp`: `extern "C" gme_hes_set_observe_interval_ms( Music_Emu*, int )`.
+  The type check uses `gme_type_t` (`me->type() != Hes_Emu::static_type()`), not
+  `dynamic_cast`, because libgme is built with RTTI disabled.
+- `gme/gme.h`: declaration and contract comment.
+- `gme/gme.exports`: the new symbol, required by the linker version script when
+  building the shared library (`GME_BUILD_SHARED=ON`).
+
+Range check: `msec` outside `1..1000` is rejected with an error string before it
+reaches upstream code. Upstream's `Blip_Buffer::set_sample_rate()` computes
+`(new_rate * (msec + 1) + 999) / 1000` in `long`, which overflows where `long` is
+32-bit (MSVC / LLP64), and guards the result only with `assert( 0 )` -- a no-op
+under `NDEBUG`, where it would silently over-allocate instead.
+
+**The default is untouched.** A caller that never invokes this API gets exactly
+upstream's 50 ms batch; nothing in the existing code paths reads any new state,
+because the patch stores none.
+
+The per-file LGPL-2.1 §2(a) modification notice is added here as a **new** line
+rather than by extending the existing `Modified <dates>` line, so that this patch
+keeps its additions-only property (see the verification below).
+
+Verified locally (nt-chiptune-player, MSVC x64):
+
+- Additions-only: `git diff --numstat 71199af..HEAD` deletion column is `0` for
+  all six files.
+- **Default behavior unchanged**: with this patch applied to the submodule and the
+  consuming project *not* calling the new API, nt-chiptune-player's
+  `ctest --preset host-debug` was green at **298/298**, including
+  `Golden.BitExactAgainstManifest` (bit-exact PCM against the pre-existing golden
+  hashes for both HES and MDX reference renderings) and `Golden.ChunkSizeInvariance`.
+  This is a one-shot experiment: once the consuming project starts calling the API
+  the HES golden hashes change by design, so the evidence is recorded here.
+- Effect when opted in: on `PL91001` (Magical Chase) track 12, counting distinct
+  `period` values observed on channel index 1 over the 18-24 s window, the default
+  50 ms batch yields **3** transitions while a 16 ms batch yields **359** -- the
+  latter matching the ground truth measured by instrumenting register writes
+  directly.
+- Range rejection: `msec` of `0`, `-1`, `1001` and `100000` all return
+  `"Invalid buffer length"` and never reach `Blip_Buffer::set_sample_rate()`.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

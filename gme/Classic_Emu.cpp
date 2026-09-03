@@ -1,4 +1,5 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-09-04 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Classic_Emu.h"
 
@@ -52,6 +53,28 @@ blargg_err_t Classic_Emu::set_sample_rate_( long rate )
 		buf = stereo_buffer;
 	}
 	return buf->set_sample_rate( rate, 1000 / 20 );
+}
+
+// nt-chiptune-player fork addition (Issue #321): opt-in observation granularity.
+// Re-sizes the Blip_Buffer emulation-batch length, which is what bounds how often
+// per-channel register state can be observed from outside (see
+// gme_hes_set_observe_interval_ms in gme.h). Call AFTER load (setup_buffer must
+// already have established the clock rate) and BEFORE start_track:
+// Blip_Buffer::set_sample_rate preserves clock_rate_ and clears the buffer, and
+// Stereo_Buffer's stereo_added/was_stereo bookkeeping is reset by
+// Classic_Emu::start_track_. Not calling this leaves the upstream default
+// (1000 / 20 ms, set in set_sample_rate_ above) untouched, so behavior is
+// unchanged for every caller that does not opt in. `msec` is range-checked here
+// because upstream's Blip_Buffer::set_sample_rate computes
+// (new_rate * (msec + 1) + 999) / 1000 in `long`, which overflows on LLP64, and
+// guards the result with assert( 0 ) only (a no-op under NDEBUG).
+blargg_err_t Classic_Emu::set_buffer_length_ms( int msec )
+{
+	if ( msec < 1 || msec > 1000 )
+		return "Invalid buffer length";
+	if ( !buf )
+		return "Buffer not allocated yet";
+	return buf->set_sample_rate( sample_rate(), msec );
 }
 
 blargg_err_t Classic_Emu::set_multi_channel ( bool is_enabled )
