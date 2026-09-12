@@ -419,6 +419,33 @@ change to `run_until()` (audio output path untouched, ADR 0023 region 1).
 `git diff --stat 083fc5b..<this commit>` shows only `gme/Nes_Namco_Apu.h`/
 `.cpp` and this file.
 
+Note: `enabled` is not visualization-only -- nt-chiptune-player's
+`is_channel_keyon()` (core/src/nsf/nsf_engine.cpp) reads the same field for
+both the visualization snapshot and the S4 silence-detection accumulator
+(PR #573 review Round 1 M-5). This change makes `enabled` stricter (a
+previously-stuck-true channel now correctly reports false), which only
+tightens S4's silence detection -- it cannot make an audible channel report
+silent. Direction is safe; existing real-data golden hashes are unchanged.
+
+### 2026-09-12 (5): N163 `get_osc_state()` also mirrors run_until()'s low-frequency skip (PR #573 review Round 1 M-4)
+
+The (4) fix above still missed one of `run_until()`'s three skip conditions:
+`if ( freq < 64 * active_oscs ) continue;`. A channel whose frequency falls
+below that floor produces no output from `run_until()` at all, but the (4)
+version of `get_osc_state()` did not check it, so such a channel could still
+report `enabled=true` -- the same class of bug (4) fixed, on a smaller
+surface (a channel that never produces output, rather than one that used to
+and got deactivated).
+
+- `gme/Nes_Namco_Apu.cpp` `get_osc_state()`: folded `freq >= 64 * active_oscs`
+  into the `enabled` expression (computed `freq` once, reused for both
+  `enabled` and the existing `period` calculation -- no behavior change to
+  `period`).
+
+No ABI change. No change to `run_until()`. Verified locally: ctest (core
+host-debug preset) 377/377 green (bit-exact golden unaffected -- this getter
+is not on the audio path).
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

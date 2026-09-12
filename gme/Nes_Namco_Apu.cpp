@@ -149,11 +149,15 @@ void Nes_Namco_Apu::run_until( blip_time_t nes_end_time )
 // nt-chiptune-player fork addition: see Nes_Namco_Apu.h. Issue #572 replaced
 // the earlier last_amp-based enabled/channel_vol heuristic with a direct
 // decode of the same RAM registers run_until() reads (osc_reg[4]&0xE0 gate,
-// osc_reg[7]&15 volume, reg[0x7F] active-channel count) -- run_until() only
-// ever updates oscs[i] for i in [osc_count-active_oscs, osc_count), so any
-// index outside that range holds a stale last_amp from whenever it was last
-// active and must be reported disabled regardless of that stale value
-// (this was the "level meter stuck" / "silent channel still lit" bug).
+// osc_reg[7]&15 volume, reg[0x7F] active-channel count, and the same
+// `freq < 64*active_oscs` low-frequency skip run_until() applies) --
+// run_until() only ever updates oscs[i] for i in
+// [osc_count-active_oscs, osc_count), so any index outside that range holds
+// a stale last_amp from whenever it was last active and must be reported
+// disabled regardless of that stale value (this was the "level meter stuck" /
+// "silent channel still lit" bug). PR #573 review Round 1 M-4: the low-freq
+// skip is folded into `enabled` too, since run_until() also produces no
+// output for a channel whose freq falls below that threshold.
 // Issue #569's period decode is unchanged: the same chip-independent
 // "normalized period N" convention as Nes_Vrc7_Apu (hz = nes_cpu_clock/(N+1)).
 // Frequency/wave-size decode mirrors run_until() above exactly (same osc_reg
@@ -172,13 +176,16 @@ void Nes_Namco_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) con
 	const uint8_t* osc_reg = &reg [index * 8 + 0x40];
 	int const volume = osc_reg [7] & 15;
 	bool const freq_gate = (osc_reg [4] & 0xE0) != 0;
+	int32_t const freq = (osc_reg [4] & 3) * 0x10000 + osc_reg [2] * 0x100L + osc_reg [0];
+	// mirrors run_until()'s `if ( freq < 64 * active_oscs ) continue;` guard.
+	bool const freq_above_floor = freq >= 64 * active_oscs;
 
-	out->enabled = (unsigned char) (in_active_range && freq_gate && volume != 0);
+	out->enabled = (unsigned char)
+		(in_active_range && freq_gate && volume != 0 && freq_above_floor);
 	out->channel_vol = out->enabled ? (unsigned char) volume : 0;
 	out->period = 0;
 	if ( out->enabled )
 	{
-		int32_t const freq = (osc_reg [4] & 3) * 0x10000 + osc_reg [2] * 0x100L + osc_reg [0];
 		int const wave_size = 32 - (osc_reg [4] >> 2 & 7) * 4;
 		// wave_size = 32 - (bits)*4 has a structural minimum of 4 (bits max 7),
 		// so `wave_size != 0` can never actually fail -- kept only to mirror the
