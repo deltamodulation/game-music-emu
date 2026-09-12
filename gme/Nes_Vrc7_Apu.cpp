@@ -106,9 +106,22 @@ void Nes_Vrc7_Apu::write_data( blip_time_t time, int data )
 // nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
 // raw state, for visualization (see gme_nsf_channel_state in gme.h). Register
 // layout per write_data() above: regs[0] = F-number low 8 bits ($10+chan),
-// regs[1] = key-on (bit 0x10) / sustain / octave / F-number bit 8 ($20+chan),
-// regs[2] = instrument (bits 4-7) / volume (bits 0-3, OPLL convention: 0 =
-// loudest, 15 = silent) ($30+chan).
+// regs[1] = key-on (bit 0x10) / sustain / octave (bits 1-3) / F-number bit 8
+// (bit 0) ($20+chan), regs[2] = instrument (bits 4-7) / volume (bits 0-3,
+// OPLL convention: 0 = loudest, 15 = silent) ($30+chan).
+//
+// Issue #569: `period` no longer carries the raw 9-bit F-number alone (block
+// was missing, so keycode_for() in nsf_engine.cpp could not reconstruct pitch
+// -- ADR 0070 "追記: Issue #558" scope cut). It now stores a chip-independent
+// *normalized* period N such that hz = nes_cpu_clock / (N + 1) reproduces the
+// OPLL note frequency (same convention keycode_for() already uses for 2A03 /
+// VRC6 / S5B, divisor=1). This keeps the ABI-frozen struct unchanged while
+// moving the FM-specific F-number/block math to the one place that already
+// knows it. OPLL note frequency: Fnote = Fnum * extClock / (2^(19-block) *
+// opll_divider), extClock/opll_divider = 3579545 / 72 per init() above.
+// nes_cpu_clock (1789772.5) is exactly extClock/2 (NTSC colorburn halving,
+// same physical clock nsf_engine.h's kNsfApuClockHz=1789773.0 approximates to
+// within 1ppm -- immaterial for MIDI-note rounding).
 void Nes_Vrc7_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
 {
 	require( (unsigned) index < osc_count );
@@ -119,7 +132,18 @@ void Nes_Vrc7_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) cons
 	int const vol_raw = osc.regs[2] & 0x0F; // 0 = loudest (OPLL convention)
 	out->enabled = (unsigned char) (key_on && vol_raw != 15);
 	out->channel_vol = (unsigned char) (15 - vol_raw);
-	out->period = (unsigned short) (osc.regs[0] | ((osc.regs[1] & 1) << 8));
+	int const fnum  = osc.regs[0] | ((osc.regs[1] & 1) << 8);
+	int const block = (osc.regs[1] >> 1) & 7;
+	out->period = 0;
+	if ( out->enabled && fnum != 0 )
+	{
+		double const hz = (double) fnum * 3579545.0 / ( (double) (1u << (19 - block)) * 72.0 );
+		double const nes_clock = 3579545.0 / 2.0;
+		long norm = (long) (nes_clock / hz + 0.5) - 1;
+		if ( norm < 0 )     norm = 0;
+		if ( norm > 65535 ) norm = 65535;
+		out->period = (unsigned short) norm;
+	}
 	out->gain_l = out->gain_r = (short) osc.last_amp;
 }
 

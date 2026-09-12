@@ -146,9 +146,14 @@ void Nes_Namco_Apu::run_until( blip_time_t nes_end_time )
 	last_time = nes_end_time;
 }
 
-// nt-chiptune-player fork addition: see the ponytail note in Nes_Namco_Apu.h.
-// last_amp is the last synthesized sample delta accumulator for the
-// oscillator; nonzero means audibly contributing this instant.
+// nt-chiptune-player fork addition: see the ponytail note in Nes_Namco_Apu.h
+// (last_amp remains the enabled/volume signal -- exact per-channel volume
+// register decode is still out of scope). Issue #569 adds period: the same
+// chip-independent "normalized period N" convention as Nes_Vrc7_Apu (hz =
+// nes_cpu_clock/(N+1)). Frequency/wave-size decode mirrors run_until() above
+// exactly (same osc_reg layout, active_oscs count, wave_size formula) --
+// nes_cpu_clock cancels out of the ratio the same way it does for FDS, so no
+// clock constant is needed here either.
 void Nes_Namco_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
 {
 	require( (unsigned) index < osc_count );
@@ -157,6 +162,22 @@ void Nes_Namco_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) con
 	Namco_Osc const& osc = oscs[index];
 	out->enabled = (unsigned char) (osc.last_amp != 0);
 	out->channel_vol = out->enabled ? 15 : 0;
+	out->period = 0;
+	if ( out->enabled )
+	{
+		int const active_oscs = (reg [0x7F] >> 4 & 7) + 1;
+		const uint8_t* osc_reg = &reg [index * 8 + 0x40];
+		int32_t const freq = (osc_reg [4] & 3) * 0x10000 + osc_reg [2] * 0x100L + osc_reg [0];
+		int const wave_size = 32 - (osc_reg [4] >> 2 & 7) * 4;
+		if ( freq != 0 && wave_size != 0 )
+		{
+			double const ratio = 983040.0 * active_oscs * wave_size / (double) freq;
+			long norm = (long) (ratio + 0.5) - 1;
+			if ( norm < 0 )     norm = 0;
+			if ( norm > 65535 ) norm = 65535;
+			out->period = (unsigned short) norm;
+		}
+	}
 	out->gain_l = out->gain_r = osc.last_amp;
 }
 

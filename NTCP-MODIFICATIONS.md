@@ -311,6 +311,41 @@ the exact run). Additions-only is `git diff --stat <old-pin>..HEAD` in
 `third_party/game-music-emu` showing only insertions across the files listed
 above, no deletions to pre-existing lines.
 
+### 2026-09-12: VRC7/FDS/N163 exact `period` decode for keycode display (Issue #569)
+
+Follow-up to the 2026-09-12 `gme_nsf_channel_state` entry above: that entry's
+ponytail scope cut left `period` unset (FDS/N163) or missing the octave/block
+bits (VRC7) for these three chips, so the consuming project's `keycode_for()`
+could not reconstruct pitch for them at all (always `0xFF`). This entry
+upgrades exactly those three `get_osc_state()` getters -- no other file
+changes, no ABI change (the frozen `gme_nsf_channel_state_t` struct layout is
+unchanged; only what `period` computes for these three chip_ids changes):
+
+- `gme/Nes_Vrc7_Apu.cpp`: `get_osc_state()` now decodes the F-number's
+  missing octave/block bits (`regs[1]` bits 1-3, alongside the bit-0 high
+  F-number bit already read) and converts to the chip-independent
+  "normalized period" convention documented on the getter (`hz =
+  nes_cpu_clock/(period+1)`), matching the convention the consuming project's
+  `keycode_for()` already uses for 2A03/VRC6/S5B (divisor=1 case).
+- `gme/Nes_Fds_Apu.cpp`: `get_osc_state()` now reads the existing
+  `$4082`/`$4083` wavetable frequency registers (same registers `run_until()`
+  already reads) and converts them the same way.
+- `gme/Nes_Namco_Apu.cpp`: `get_osc_state()` now reads the existing
+  per-channel frequency/wave-size registers and the active-channel-count
+  register (same registers `run_until()` already reads) and converts them
+  the same way. The ponytail note on the header (last_amp-only *volume*
+  signal) still applies -- only pitch/`period` was upgraded, not volume.
+
+No behavior change to audio synthesis or any pre-existing getter output other
+than these three `period` fields (previously 0/incomplete, now populated).
+Verified locally (nt-chiptune-player, MSVC x64): `ctest --preset host-debug`
+golden hashes for the pre-existing HES/MDX/NSF reference renderings are
+unchanged after this patch (see the PR referencing this commit for the exact
+run); `git diff --stat <old-pin>..HEAD` in `third_party/game-music-emu` shows
+insertions only in the three files above (no deletions to pre-existing
+lines, aside from the two `period` assignment lines each getter replaces
+with the new decode).
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

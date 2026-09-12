@@ -114,7 +114,7 @@ void Nes_Fds_Apu::set_tempo( double t )
 
 void Nes_Fds_Apu::run_until( blip_time_t final_end_time )
 {
-	int const wave_freq = (regs (0x4083) & 0x0F) * 0x100 + regs (0x4082);
+	int const wave_freq = (regs_ [0x4083 - io_addr] & 0x0F) * 0x100 + regs_ [0x4082 - io_addr];
 	Blip_Buffer* const output_ = this->output_;
 	if ( wave_freq && output_ && !((regs (0x4089) | regs (0x4083)) & 0x80) )
 	{
@@ -291,6 +291,11 @@ void Nes_Fds_Apu::run_until( blip_time_t final_end_time )
 // ponytail: FDS pitch is a 12-bit frequency word split across two registers
 // plus an LFO sweep; decode it if FDS pitch display accuracy is needed
 // (Issue #558 follow-up).
+// Issue #569: period is the same chip-independent "normalized period N"
+// convention added to Nes_Vrc7_Apu::get_osc_state (hz = nes_cpu_clock/(N+1)).
+// FDS wavetable frequency is hz = wave_freq * nes_cpu_clock / 2^16 (nesdev
+// wiki "2A03/2A07 vs. FDS timing"), so nes_cpu_clock/hz = 65536/wave_freq --
+// the clock cancels out, so no clock constant is needed here at all.
 void Nes_Fds_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
 {
 	require( (unsigned) index < osc_count );
@@ -298,6 +303,15 @@ void Nes_Fds_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
 	out->chip_id = 3; // FDS
 	out->enabled = (unsigned char) (env_gain != 0 && last_amp != 0);
 	out->channel_vol = (unsigned char) (std::min)( env_gain, 15 );
+	int const wave_freq = (regs_ [0x4083 - io_addr] & 0x0F) * 0x100 + regs_ [0x4082 - io_addr];
+	out->period = 0;
+	if ( out->enabled && wave_freq != 0 )
+	{
+		long norm = (long) (65536.0 / (double) wave_freq + 0.5) - 1;
+		if ( norm < 0 )     norm = 0;
+		if ( norm > 65535 ) norm = 65535;
+		out->period = (unsigned short) norm;
+	}
 	out->gain_l = out->gain_r = (short) last_amp;
 }
 
