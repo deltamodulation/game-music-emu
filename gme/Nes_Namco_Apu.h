@@ -36,11 +36,10 @@ public:
 
 	// nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
 	// current raw state, for visualization (see gme_nsf_channel_state in gme.h).
-	// ponytail: uses last_amp as the enabled signal and a fixed max channel_vol
-	// rather than decoding the shared 0x80-byte register file's per-channel
-	// volume field (register $7F bits 4-6 gate active-channel count only).
-	// period (Issue #569) does decode the per-channel frequency/wave-size
-	// registers -- see the comment on get_osc_state's definition.
+	// Issue #572: enabled/channel_vol/period are all decoded directly from the
+	// shared 0x80-byte register file (register $7F bits 4-6 gate active-channel
+	// count, per-channel volume/frequency/wave-size registers) -- see the
+	// comment on get_osc_state's definition.
 	void get_osc_state( int index, struct gme_nsf_channel_state_t* out ) const;
 	void load_state( namco_state_t const& );
 

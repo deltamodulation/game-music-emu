@@ -387,6 +387,38 @@ musically intended FDS pitch. No code change, no ABI change, no behavior
 change (the clamp itself is unmodified; only a comment was added explaining
 when it engages).
 
+### 2026-09-12 (4): N163 `get_osc_state()` full register decode, replacing the last_amp heuristic (Issue #572)
+
+The ponytail-scoped heuristic documented above (last synthesized amplitude as
+the sole enabled/volume signal) turned out to have a real-world bug, not just
+reduced pitch accuracy: `run_until()` only updates `oscs[i]` for `i` in
+`[osc_count-active_oscs, osc_count)` (the RAM-configured active-channel
+range), so any index outside that range keeps whatever `last_amp` it last had
+while active -- `osc.last_amp != 0` then reports it enabled forever (a level
+meter stuck at its last value, a keyboard key lit for a channel that is
+silent because N163's active-channel count went down). Deactivating a channel
+by lowering the active count in `$7F` never zeroes its stale `last_amp`.
+
+Fixed by decoding the RAM registers `run_until()` itself gates on, the same
+approach `Nes_Fme7_Apu::get_osc_state()` already uses: `reg[0x7F]` bits 4-6
+for `active_oscs` (only indices `>= osc_count-active_oscs` can be enabled),
+`osc_reg[4] & 0xE0` for the frequency-enable gate, `osc_reg[7] & 15` for the
+4-bit volume (now surfaced as `channel_vol`, previously hardcoded to a fixed
+15 whenever `enabled`). `period` decode (Issue #569) and its `wave_size`
+formula are unchanged. `gain_l`/`gain_r` are zeroed when disabled rather than
+leaking the last stale `last_amp`.
+
+- `gme/Nes_Namco_Apu.cpp` `get_osc_state()`: replaced the enabled/channel_vol
+  logic as above; comment on the getter and the ponytail note in
+  `Nes_Namco_Apu.h` updated to match (the h file's ponytail note about
+  `channel_vol` being fixed-15 no longer applies -- period decode note is
+  unchanged).
+
+No ABI change (same `gme_nsf_channel_state_t` fields, same meaning). No
+change to `run_until()` (audio output path untouched, ADR 0023 region 1).
+`git diff --stat 083fc5b..<this commit>` shows only `gme/Nes_Namco_Apu.h`/
+`.cpp` and this file.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

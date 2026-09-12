@@ -146,27 +146,38 @@ void Nes_Namco_Apu::run_until( blip_time_t nes_end_time )
 	last_time = nes_end_time;
 }
 
-// nt-chiptune-player fork addition: see the ponytail note in Nes_Namco_Apu.h
-// (last_amp remains the enabled/volume signal -- exact per-channel volume
-// register decode is still out of scope). Issue #569 adds period: the same
-// chip-independent "normalized period N" convention as Nes_Vrc7_Apu (hz =
-// nes_cpu_clock/(N+1)). Frequency/wave-size decode mirrors run_until() above
-// exactly (same osc_reg layout, active_oscs count, wave_size formula) --
-// nes_cpu_clock cancels out of the ratio the same way it does for FDS, so no
-// clock constant is needed here either.
+// nt-chiptune-player fork addition: see Nes_Namco_Apu.h. Issue #572 replaced
+// the earlier last_amp-based enabled/channel_vol heuristic with a direct
+// decode of the same RAM registers run_until() reads (osc_reg[4]&0xE0 gate,
+// osc_reg[7]&15 volume, reg[0x7F] active-channel count) -- run_until() only
+// ever updates oscs[i] for i in [osc_count-active_oscs, osc_count), so any
+// index outside that range holds a stale last_amp from whenever it was last
+// active and must be reported disabled regardless of that stale value
+// (this was the "level meter stuck" / "silent channel still lit" bug).
+// Issue #569's period decode is unchanged: the same chip-independent
+// "normalized period N" convention as Nes_Vrc7_Apu (hz = nes_cpu_clock/(N+1)).
+// Frequency/wave-size decode mirrors run_until() above exactly (same osc_reg
+// layout, active_oscs count, wave_size formula) -- nes_cpu_clock cancels out
+// of the ratio the same way it does for FDS, so no clock constant is needed
+// here either.
 void Nes_Namco_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
 {
 	require( (unsigned) index < osc_count );
 	memset( out, 0, sizeof *out );
 	out->chip_id = 4; // N163 (Namco 106)
 	Namco_Osc const& osc = oscs[index];
-	out->enabled = (unsigned char) (osc.last_amp != 0);
-	out->channel_vol = out->enabled ? 15 : 0;
+
+	int const active_oscs = (reg [0x7F] >> 4 & 7) + 1;
+	bool const in_active_range = index >= osc_count - active_oscs;
+	const uint8_t* osc_reg = &reg [index * 8 + 0x40];
+	int const volume = osc_reg [7] & 15;
+	bool const freq_gate = (osc_reg [4] & 0xE0) != 0;
+
+	out->enabled = (unsigned char) (in_active_range && freq_gate && volume != 0);
+	out->channel_vol = out->enabled ? (unsigned char) volume : 0;
 	out->period = 0;
 	if ( out->enabled )
 	{
-		int const active_oscs = (reg [0x7F] >> 4 & 7) + 1;
-		const uint8_t* osc_reg = &reg [index * 8 + 0x40];
 		int32_t const freq = (osc_reg [4] & 3) * 0x10000 + osc_reg [2] * 0x100L + osc_reg [0];
 		int const wave_size = 32 - (osc_reg [4] >> 2 & 7) * 4;
 		// wave_size = 32 - (bits)*4 has a structural minimum of 4 (bits max 7),
@@ -183,6 +194,6 @@ void Nes_Namco_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) con
 			out->period = (unsigned short) norm;
 		}
 	}
-	out->gain_l = out->gain_r = osc.last_amp;
+	out->gain_l = out->gain_r = out->enabled ? osc.last_amp : 0;
 }
 
