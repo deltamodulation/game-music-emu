@@ -2,6 +2,7 @@
 
 #include "Nsf_Emu.h"
 
+#include "gme.h" // nt-chiptune-player fork addition: gme_nsf_channel_state C API
 #include "blargg_endian.h"
 #include <string.h>
 #include <stdio.h>
@@ -689,4 +690,82 @@ blargg_err_t Nsf_Emu::run_clocks( blip_time_t& duration, int )
 	#endif
 
 	return 0;
+}
+
+// nt-chiptune-player fork addition (Issue #558): read-only per-channel state
+// snapshot. Dispatch mirrors set_voice() above exactly (same osc_count
+// subtraction chain and the same VRC6 "put saw first" reindexing), so index
+// `i` always names the same voice gme_voice_count()/apu_names does.
+void Nsf_Emu::channel_state( int i, gme_nsf_channel_state_t* out ) const
+{
+	memset( out, 0, sizeof *out );
+	if ( i < Nes_Apu::osc_count )
+	{
+		apu.get_osc_state( i, out );
+		return;
+	}
+	i -= Nes_Apu::osc_count;
+
+	#if !NSF_EMU_APU_ONLY
+	#define HANDLE_CHIP_STATE(class, object) \
+		if ( object ) \
+		{ \
+			if ( i < class::osc_count ) \
+			{ \
+				object->get_osc_state( i, out ); \
+				return; \
+			} \
+			i -= class::osc_count; \
+		}
+	{
+		if ( vrc6 )
+		{
+			if ( i < Nes_Vrc6_Apu::osc_count )
+			{
+				int j = i;
+				if ( --j < 0 )
+					j = 2; // put saw first, same remap as set_voice()
+				vrc6->get_osc_state( j, out );
+				return;
+			}
+			i -= Nes_Vrc6_Apu::osc_count;
+		}
+		HANDLE_CHIP_STATE(Nes_Namco_Apu, namco);
+		HANDLE_CHIP_STATE(Nes_Fme7_Apu, fme7);
+		HANDLE_CHIP_STATE(Nes_Fds_Apu, fds);
+		HANDLE_CHIP_STATE(Nes_Mmc5_Apu, mmc5);
+		HANDLE_CHIP_STATE(Nes_Vrc7_Apu, vrc7);
+	}
+	#undef HANDLE_CHIP_STATE
+	#endif
+}
+
+// nt-chiptune-player fork addition (LGPL-2.1 modification): C API for
+// gme_nsf_channel_state (declared in gme.h). This file is only compiled when
+// USE_GME_NSF is enabled (see gme/CMakeLists.txt), so no #ifdef guard is
+// needed here.
+extern "C" BLARGG_EXPORT gme_err_t gme_nsf_channel_state( Music_Emu const* me, int index, gme_nsf_channel_state_t* out )
+{
+	if ( !me || !out )
+		return "NULL parameter";
+	if ( me->type() != Nsf_Emu::static_type() )
+		return "Not an NSF emulator";
+	Nsf_Emu const* nsf = static_cast<Nsf_Emu const*>( me );
+	if ( (unsigned) index >= (unsigned) nsf->voice_count() )
+		return "Voice index out of range";
+	nsf->channel_state( index, out );
+	return 0;
+}
+
+// nt-chiptune-player fork addition (Issue #558): C API for
+// gme_nsf_set_observe_interval_ms (declared in gme.h). Same rationale as
+// gme_hes_set_observe_interval_ms (see Hes_Emu.cpp) -- the type check goes
+// through gme_type_t because libgme is built with RTTI disabled.
+extern "C" BLARGG_EXPORT gme_err_t gme_nsf_set_observe_interval_ms( Music_Emu* me, int msec )
+{
+	if ( !me )
+		return "NULL parameter";
+	if ( me->type() != Nsf_Emu::static_type() )
+		return "Not an NSF emulator";
+	return static_cast<Nsf_Emu*>( me )->set_observe_interval_ms( msec );
 }

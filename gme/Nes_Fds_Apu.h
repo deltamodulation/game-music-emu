@@ -1,12 +1,14 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
 
 // NES FDS sound chip emulator
+// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #ifndef NES_FDS_APU_H
 #define NES_FDS_APU_H
 
 #include "blargg_common.h"
 #include "Blip_Buffer.h"
+#include "gme.h" // nt-chiptune-player fork addition: gme_nsf_channel_state_t
 
 class Nes_Fds_Apu {
 public:
@@ -30,6 +32,11 @@ public:
 	BLARGG_DISABLE_NOTHROW
 
 	void osc_output( int, Blip_Buffer* );
+
+	// nt-chiptune-player fork addition: read-only snapshot of the (sole) FDS
+	// oscillator's current raw state, for visualization (see
+	// gme_nsf_channel_state in gme.h).
+	void get_osc_state( int index, struct gme_nsf_channel_state_t* out ) const;
 private:
 	static const unsigned int wave_size       = 0x40;
 	static const unsigned int master_vol_max  =   10;

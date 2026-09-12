@@ -1,5 +1,7 @@
 #include "Nes_Vrc7_Apu.h"
 
+#include <string.h>
+
 extern "C" {
 #include "ext/emu2413.h"
 }
@@ -100,6 +102,26 @@ void Nes_Vrc7_Apu::write_data( blip_time_t time, int data )
 
 	OPLL_writeIO( (OPLL *) opll, 0, addr );
 	OPLL_writeIO( (OPLL *) opll, 1, data );
+}
+
+// nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
+// raw state, for visualization (see gme_nsf_channel_state in gme.h). Register
+// layout per write_data() above: regs[0] = F-number low 8 bits ($10+chan),
+// regs[1] = key-on (bit 0x10) / sustain / octave / F-number bit 8 ($20+chan),
+// regs[2] = instrument (bits 4-7) / volume (bits 0-3, OPLL convention: 0 =
+// loudest, 15 = silent) ($30+chan).
+void Nes_Vrc7_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
+{
+	require( (unsigned) index < osc_count );
+	memset( out, 0, sizeof *out );
+	out->chip_id = 2; // VRC7
+	Vrc7_Osc const& osc = oscs[index];
+	bool const key_on = (osc.regs[1] & 0x10) != 0;
+	int const vol_raw = osc.regs[2] & 0x0F; // 0 = loudest (OPLL convention)
+	out->enabled = (unsigned char) (key_on && vol_raw != 15);
+	out->channel_vol = (unsigned char) (15 - vol_raw);
+	out->period = (unsigned short) (osc.regs[0] | ((osc.regs[1] & 1) << 8));
+	out->gain_l = out->gain_r = (short) osc.last_amp;
 }
 
 void Nes_Vrc7_Apu::end_frame( blip_time_t time )

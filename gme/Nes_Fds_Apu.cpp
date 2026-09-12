@@ -16,6 +16,7 @@ Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA */
 #include "blargg_source.h"
 
 #include <string.h>
+#include <algorithm>
 
 static int const fract_range = 65536;
 
@@ -280,3 +281,22 @@ void Nes_Fds_Apu::run_until( blip_time_t final_end_time )
 	}
 	last_time = final_end_time;
 }
+
+// nt-chiptune-player fork addition: read-only snapshot of the FDS oscillator's
+// raw state, for visualization (see gme_nsf_channel_state in gme.h). env_gain
+// is the wave (master) envelope generator's current gain (0-0x20); wave_pos/
+// regs_ hold the 64-sample custom waveform but no single "pitch register" the
+// way pulse/square channels have, so period is left at 0 (keycode invalid) --
+// ponytail: FDS pitch is a 12-bit frequency word split across two registers
+// plus an LFO sweep; decode it if FDS pitch display accuracy is needed
+// (Issue #558 follow-up).
+void Nes_Fds_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
+{
+	require( (unsigned) index < osc_count );
+	memset( out, 0, sizeof *out );
+	out->chip_id = 3; // FDS
+	out->enabled = (unsigned char) (env_gain != 0 && last_amp != 0);
+	out->channel_vol = (unsigned char) (std::min)( env_gain, 15 );
+	out->gain_l = out->gain_r = (short) last_amp;
+}
+

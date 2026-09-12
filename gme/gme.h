@@ -2,6 +2,7 @@
 
 /* Modified 2026-08-17, 2026-08-19 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 /* Modified 2026-09-04 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
+/* Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 
 /* Game_Music_Emu 0.6.6 */
 #ifndef GME_H
@@ -238,6 +239,44 @@ and changes nothing for callers that ignore it.
 Not thread-safe: call only from the same thread as gme_play(), and not
 concurrently with one. */
 BLARGG_EXPORT gme_err_t gme_hes_set_observe_interval_ms( Music_Emu*, int msec );
+
+/* nt-chiptune-player fork addition (Issue #558; same rationale/ADR 0023 as
+gme_hes_channel_state above): read-only per-channel state snapshot for the NSF
+(NES/Famicom 2A03 APU + optional expansion sound chips) emulator. NSF-specific
+for the same reason as the HES struct: the raw register layout needed for
+pitch/volume reconstruction has no cross-format equivalent in this codebase,
+and differs per expansion chip. Field composition mirrors
+gme_hes_channel_state_t (same 9-field shape); the two struct layouts are
+independently frozen and not interchangeable. */
+/* Struct layout is frozen for ABI compatibility with the nt-chiptune-player
+JNI bridge -- append new fields at the end only; never reorder, resize, or
+remove existing fields. */
+typedef struct gme_nsf_channel_state_t
+{
+	unsigned char enabled;     /* channel currently gated on (chip-specific "playing" signal, e.g. length counter > 0) */
+	unsigned char chip_id;     /* 0=2A03, 1=VRC6, 2=VRC7, 3=FDS, 4=N163(Namco 106), 5=S5B(Sunsoft FME-7) */
+	unsigned char noise_on;    /* 2A03 noise channel only: always 1 for that voice, else 0 */
+	unsigned char channel_vol; /* raw volume/envelope/gain, 0-15 (chip-specific scale; 2A03 DMC uses DAC>>3) */
+	unsigned char reserved0;   /* ABI parity with gme_hes_channel_state_t (was balance); always 0, reserved */
+	unsigned short period;     /* raw timer period register, chip-specific units (0 = keycode invalid) */
+	unsigned char reserved1;   /* ABI parity with gme_hes_channel_state_t (was noise_freq); always 0, reserved */
+	short gain_l;              /* proxy amplitude (last synthesized output delta accumulator) */
+	short gain_r;              /* same as gain_l -- NES/expansion voices in this fork are mono-routed internally */
+} gme_nsf_channel_state_t;
+
+/* Fill *out with channel `index`'s current state (0 <= index < gme_voice_count()).
+Returns NULL on success. Returns an error string if `me` is not an NSF emulator
+or `index` is out of range; *out is left unmodified in that case.
+Not thread-safe: call only from the same thread as gme_play(), and only
+between gme_play() calls (not concurrently with one). */
+BLARGG_EXPORT gme_err_t gme_nsf_channel_state( Music_Emu const*, int index, gme_nsf_channel_state_t* out );
+
+/* nt-chiptune-player fork addition (Issue #558 / ADR 0070 裁定 6): set the
+internal emulation-batch length, in milliseconds, of an NSF emulator. Same
+contract as gme_hes_set_observe_interval_ms above (valid range 1..1000 ms,
+call AFTER load and BEFORE gme_start_track, opt-in / upstream default
+unchanged if not called). */
+BLARGG_EXPORT gme_err_t gme_nsf_set_observe_interval_ms( Music_Emu*, int msec );
 
 /* Disable/Enable echo effect for SPC files */
 /* Available since 0.6.4 */

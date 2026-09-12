@@ -1,10 +1,12 @@
 // NES 2A03 APU sound chip emulator
 
 // Nes_Snd_Emu 0.1.8
+// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef NES_APU_H
 #define NES_APU_H
 
 #include "blargg_common.h"
+#include "gme.h" // nt-chiptune-player fork addition: gme_nsf_channel_state_t
 
 typedef int32_t nes_time_t; // CPU clock cycle count
 typedef unsigned nes_addr_t; // 16-bit memory address
@@ -69,6 +71,12 @@ public:
 	// 2) Triangle, 3) Noise, 4) DMC.
 	static const int osc_count = 5;
 	void osc_output( int index, Blip_Buffer* buffer );
+
+	// nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
+	// current raw state, for visualization (see gme_nsf_channel_state in gme.h).
+	// chip_id is always 0 (2A03) except when called through Nes_Mmc5_Apu, which
+	// overrides chip_id to 6 (see Nes_Mmc5_Apu::get_osc_state).
+	void get_osc_state( int index, gme_nsf_channel_state_t* out ) const;
 
 	// Set IRQ time callback that is invoked when the time of earliest IRQ
 	// may have changed, or NULL to disable. When callback is invoked,

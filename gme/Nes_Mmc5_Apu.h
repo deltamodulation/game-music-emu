@@ -1,6 +1,7 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
 
 // NES MMC5 sound chip emulator
+// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #ifndef NES_MMC5_APU_H
 #define NES_MMC5_APU_H
@@ -17,6 +18,12 @@ public:
 	void write_register( blip_time_t, unsigned addr, int data );
 	void osc_output( int i, Blip_Buffer* );
 
+	// nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
+	// current raw state, for visualization (see gme_nsf_channel_state in gme.h).
+	// index remapping mirrors osc_output() above (square1, square2, PCM ->
+	// underlying Nes_Apu oscillators 0, 1, 4); chip_id is overridden to 6 (MMC5).
+	void get_osc_state( int i, struct gme_nsf_channel_state_t* out ) const;
+
 	enum { exram_size = 1024 };
 	unsigned char exram [exram_size];
 };
@@ -29,6 +36,15 @@ inline void Nes_Mmc5_Apu::osc_output( int i, Blip_Buffer* b )
 	if ( i > 1 )
 		i += 2;
 	Nes_Apu::osc_output( i, b );
+}
+
+inline void Nes_Mmc5_Apu::get_osc_state( int i, gme_nsf_channel_state_t* out ) const
+{
+	assert( (unsigned) i < osc_count );
+	if ( i > 1 )
+		i += 2;
+	Nes_Apu::get_osc_state( i, out );
+	out->chip_id = 6; // MMC5
 }
 
 inline void Nes_Mmc5_Apu::write_register( blip_time_t time, unsigned addr, int data )

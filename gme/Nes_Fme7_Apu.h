@@ -1,11 +1,13 @@
 // Sunsoft FME-7 sound emulator
 
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef NES_FME7_APU_H
 #define NES_FME7_APU_H
 
 #include "blargg_common.h"
 #include "Blip_Buffer.h"
+#include "gme.h" // nt-chiptune-player fork addition: gme_nsf_channel_state_t
 
 struct fme7_apu_state_t
 {
@@ -27,6 +29,10 @@ public:
 	void osc_output( int index, Blip_Buffer* );
 	void end_frame( blip_time_t );
 	void save_state( fme7_apu_state_t* ) const;
+
+	// nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
+	// current raw state, for visualization (see gme_nsf_channel_state in gme.h).
+	void get_osc_state( int index, struct gme_nsf_channel_state_t* out ) const;
 	void load_state( fme7_apu_state_t const& );
 
 	// Mask and addresses of registers

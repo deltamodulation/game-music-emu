@@ -2,6 +2,9 @@
 
 #include "Nes_Vrc6_Apu.h"
 
+#include <algorithm>
+#include <string.h>
+
 /* Copyright (C) 2003-2006 Shay Green. This module is free software; you
 can redistribute it and/or modify it under the terms of the GNU Lesser
 General Public License as published by the Free Software Foundation; either
@@ -59,6 +62,36 @@ void Nes_Vrc6_Apu::write_osc( blip_time_t time, int osc_index, int reg, int data
 
 	run_until( time );
 	oscs [osc_index].regs [reg] = data;
+}
+
+// nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
+// raw state, for visualization (see gme_nsf_channel_state in gme.h). Register
+// layout matches write_osc()/run_square()/run_saw() above: for the two square
+// oscillators (0,1) regs[2] bit 0x80 enables the oscillator (or the "gate" bit
+// in regs[0] bit 0x80 forces it on at max volume) and regs[0] bits 0-3 are the
+// volume; for the saw oscillator (2) regs[2] bit 0x80 enables it and the
+// running accumulator amp approximates loudness (the saw has no discrete
+// volume register). period() is shared by all three oscillators.
+void Nes_Vrc6_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
+{
+	require( (unsigned) index < osc_count );
+	memset( out, 0, sizeof *out );
+	out->chip_id = 1; // VRC6
+	Vrc6_Osc const& osc = oscs[index];
+	bool const gate_or_enabled = (osc.regs[2] & 0x80) != 0;
+	if ( index < 2 )
+	{
+		bool const gate = (osc.regs[0] & 0x80) != 0;
+		out->enabled = (unsigned char) (gate_or_enabled && (gate || (osc.regs[0] & 0x0F) != 0));
+		out->channel_vol = (unsigned char) (osc.regs[0] & 0x0F);
+	}
+	else
+	{
+		out->enabled = (unsigned char) (gate_or_enabled && osc.amp != 0);
+		out->channel_vol = (unsigned char) std::min( osc.amp, 63 ) >> 2; // 6-bit accumulator -> 0-15
+	}
+	out->period = (unsigned short) osc.period();
+	out->gain_l = out->gain_r = (short) osc.last_amp;
 }
 
 void Nes_Vrc6_Apu::end_frame( blip_time_t time )

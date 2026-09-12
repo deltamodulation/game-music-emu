@@ -1,6 +1,7 @@
 // Nintendo NES/Famicom NSF music file emulator
 
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef NSF_EMU_H
 #define NSF_EMU_H
 
@@ -52,6 +53,18 @@ public:
 	Nsf_Emu();
 	~Nsf_Emu();
 	Nes_Apu* apu_() { return &apu; }
+
+	// nt-chiptune-player fork addition (Issue #558): read-only per-channel
+	// state snapshot, dispatched to whichever chip owns voice `i` (see
+	// gme_nsf_channel_state in gme.h). index ordering matches set_voice()/
+	// gme_voice_count() exactly (same dispatch order, including the VRC6
+	// "saw first" reordering below).
+	void channel_state( int i, struct gme_nsf_channel_state_t* out ) const;
+
+	// nt-chiptune-player fork addition (Issue #558): opt-in observation
+	// granularity, delegated to the Classic_Emu base (see
+	// gme_nsf_set_observe_interval_ms in gme.h).
+	blargg_err_t set_observe_interval_ms( int msec ) { return set_buffer_length_ms( msec ); }
 protected:
 	blargg_err_t track_info_( track_info_t*, int track ) const;
 	blargg_err_t load_( Data_Reader& );

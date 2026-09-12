@@ -1,11 +1,13 @@
 // Namco 106 sound chip emulator
 
 // Nes_Snd_Emu 0.1.8
+// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef NES_NAMCO_APU_H
 #define NES_NAMCO_APU_H
 
 #include "blargg_common.h"
 #include "Blip_Buffer.h"
+#include "gme.h" // nt-chiptune-player fork addition: gme_nsf_channel_state_t
 
 struct namco_state_t;
 
@@ -31,6 +33,15 @@ public:
 
 	// to do: implement save/restore
 	void save_state( namco_state_t* out ) const;
+
+	// nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
+	// current raw state, for visualization (see gme_nsf_channel_state in gme.h).
+	// ponytail: uses last_amp as the sole enabled/volume signal rather than
+	// decoding the shared 0x80-byte register file's per-channel frequency/volume
+	// fields (channel layout depends on the runtime-configured channel count,
+	// register $7F bits 4-6). Upgrade to exact register decode if N163 pitch
+	// display accuracy is needed (Issue #558 follow-up).
+	void get_osc_state( int index, struct gme_nsf_channel_state_t* out ) const;
 	void load_state( namco_state_t const& );
 
 public:

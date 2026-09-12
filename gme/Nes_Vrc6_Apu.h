@@ -1,11 +1,13 @@
 // Konami VRC6 sound chip emulator
 
 // Nes_Snd_Emu 0.1.8
+// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef NES_VRC6_APU_H
 #define NES_VRC6_APU_H
 
 #include "blargg_common.h"
 #include "Blip_Buffer.h"
+#include "gme.h" // nt-chiptune-player fork addition: gme_nsf_channel_state_t
 
 struct vrc6_apu_state_t;
 
@@ -29,6 +31,10 @@ public:
 	enum { base_addr = 0x9000 };
 	enum { addr_step = 0x1000 };
 	void write_osc( blip_time_t, int osc, int reg, int data );
+
+	// nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
+	// current raw state, for visualization (see gme_nsf_channel_state in gme.h).
+	void get_osc_state( int index, gme_nsf_channel_state_t* out ) const;
 
 public:
 	Nes_Vrc6_Apu();

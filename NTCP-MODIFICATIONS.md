@@ -256,6 +256,61 @@ Verified locally (nt-chiptune-player, MSVC x64):
 - Range rejection: `msec` of `0`, `-1`, `1001` and `100000` all return
   `"Invalid buffer length"` and never reach `Blip_Buffer::set_sample_rate()`.
 
+### 2026-09-12: `gme_nsf_channel_state` + `gme_nsf_set_observe_interval_ms` (Issue #558)
+
+Same rationale as the HES additions above (ADR 0023 region 1, additions-only):
+nt-chiptune-player's NSF engine needs read-only per-channel state (2A03 APU +
+optional VRC6/VRC7/FDS/MMC5/N163/S5B expansion chips) for the same 30-60Hz
+visualization snapshot HES already gets. Files touched (all additions-only --
+new methods/structs/exports, no existing behavior changed):
+
+- `gme/gme.h`: `gme_nsf_channel_state_t` struct (field composition mirrors
+  `gme_hes_channel_state_t`) and the two new C API declarations.
+- `gme/Nes_Apu.h`/`.cpp`: `Nes_Apu::get_osc_state()` -- covers the base 2A03
+  channels (square1/2, triangle, noise, dmc) via the existing `length_counter`/
+  `Nes_Envelope::volume()`/`period()` accessors, reused unmodified by MMC5 (see
+  below).
+- `gme/Nes_Vrc6_Apu.h`/`.cpp`, `gme/Nes_Vrc7_Apu.h`/`.cpp`: `get_osc_state()`
+  decoding the documented VRC6/VRC7 register layout (see the getter's own
+  comment for the bit layout, taken from each chip's existing `write_osc`/
+  `write_data`/`run_square`/`run_saw` implementations).
+- `gme/Nes_Mmc5_Apu.h`: `get_osc_state()` -- thin index-remapping wrapper over
+  `Nes_Apu::get_osc_state()` (same remap `osc_output()` already does), header-
+  only like the rest of this class.
+- `gme/Nes_Namco_Apu.h`/`.cpp`, `gme/Nes_Fme7_Apu.h`/`.cpp`,
+  `gme/Nes_Fds_Apu.h`/`.cpp`: `get_osc_state()`. **ponytail-scoped**: Namco
+  (N163) and FDS use a reduced heuristic (last synthesized amplitude /
+  envelope gain as the sole enabled/volume signal) rather than a full register
+  decode, because their channel-to-register mapping is either
+  runtime-configured (N163: channel count read from a control register) or
+  spread across an LFO+sweep pair with no single pitch register (FDS). FME-7/
+  S5B gets a full register decode (its register file has one fixed layout).
+  See the ponytail comment on each getter for the precise ceiling and the
+  upgrade path if per-chip pitch display accuracy for N163/FDS is needed.
+- `gme/Nsf_Emu.h`/`.cpp`: `Nsf_Emu::channel_state()` dispatches to whichever
+  chip owns voice `i`, replicating `set_voice()`'s existing index-subtraction
+  chain (including the VRC6 "put saw first" reindexing) so that
+  `gme_nsf_channel_state`'s index always names the same voice
+  `gme_voice_count()`/`gme_voice_name()` do. `Nsf_Emu::set_observe_interval_ms`
+  re-exports the already-shared `Classic_Emu::set_buffer_length_ms` (see the
+  2026-09-04 entry above) the same way `Hes_Emu::set_observe_interval_ms` does
+  -- no new logic, same range check and call-order contract (after load,
+  before `gme_start_track`).
+- `gme/gme.exports`: the two new symbols.
+
+**The default is untouched.** A caller that never invokes
+`gme_nsf_set_observe_interval_ms` gets exactly upstream's 50 ms batch, same as
+NSF always has; `gme_nsf_channel_state` only reads existing oscillator state,
+it writes nothing.
+
+Verified locally (nt-chiptune-player, MSVC x64): with this patch applied and
+the consuming project's NSF engine wired to call these APIs,
+`ctest --preset host-release` golden hashes for the pre-existing HES and MDX
+reference renderings are unchanged (see the PR that references this commit for
+the exact run). Additions-only is `git diff --stat <old-pin>..HEAD` in
+`third_party/game-music-emu` showing only insertions across the files listed
+above, no deletions to pre-existing lines.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

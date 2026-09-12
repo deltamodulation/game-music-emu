@@ -2,6 +2,8 @@
 
 #include "Nes_Namco_Apu.h"
 
+#include <string.h>
+
 /* Copyright (C) 2003-2006 Shay Green. This module is free software; you
 can redistribute it and/or modify it under the terms of the GNU Lesser
 General Public License as published by the Free Software Foundation; either
@@ -141,5 +143,19 @@ void Nes_Namco_Apu::run_until( blip_time_t nes_end_time )
 	}
 
 	last_time = nes_end_time;
+}
+
+// nt-chiptune-player fork addition: see the ponytail note in Nes_Namco_Apu.h.
+// last_amp is the last synthesized sample delta accumulator for the
+// oscillator; nonzero means audibly contributing this instant.
+void Nes_Namco_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
+{
+	require( (unsigned) index < osc_count );
+	memset( out, 0, sizeof *out );
+	out->chip_id = 4; // N163 (Namco 106)
+	Namco_Osc const& osc = oscs[index];
+	out->enabled = (unsigned char) (osc.last_amp != 0);
+	out->channel_vol = out->enabled ? 15 : 0;
+	out->gain_l = out->gain_r = osc.last_amp;
 }
 

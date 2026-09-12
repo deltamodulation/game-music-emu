@@ -3,6 +3,31 @@
 #include "Nes_Fme7_Apu.h"
 
 #include <string.h>
+#include "blargg_source.h"
+
+// nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
+// raw state, for visualization (see gme_nsf_channel_state in gme.h). regs[7]
+// holds the tone/noise disable bits (bit=1 disables) per channel; regs[8+i]
+// bits 0-3 select amp_table[] (see run_until() above) when the channel isn't
+// in fixed-envelope mode (bit 4 of regs[8+i]); period is regs[2i]/regs[2i+1]
+// (12-bit) per run_until()'s tone generator. S5B ("Sunsoft 5B", the extended
+// FME-7 variant used by some NSFs) shares this exact register layout.
+void Nes_Fme7_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
+{
+	require( (unsigned) index < osc_count );
+	memset( out, 0, sizeof *out );
+	out->chip_id = 5; // S5B (Sunsoft FME-7)
+	int const mode = regs[7] >> index;
+	int const vol_mode = regs[010 + index];
+	bool const tone_on = !(mode & 1);
+	bool const noise_on_bit = !(mode & 8);
+	int const vol = amp_table[vol_mode & 0x0F];
+	out->enabled = (unsigned char) ((tone_on || noise_on_bit) && vol != 0);
+	out->noise_on = (unsigned char) (noise_on_bit && !tone_on);
+	out->channel_vol = (unsigned char) ((vol_mode & 0x0F));
+	out->period = (unsigned short) (regs[2 * index] + (regs[2 * index + 1] & 0x0F) * 0x100);
+	out->gain_l = out->gain_r = (short) oscs[index].last_amp;
+}
 
 /* Copyright (C) 2003-2006 Shay Green. This module is free software; you
 can redistribute it and/or modify it under the terms of the GNU Lesser

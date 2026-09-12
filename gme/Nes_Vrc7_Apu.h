@@ -1,12 +1,14 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
 
 // Konami VRC7 sound chip emulator
+// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #ifndef NES_VRC7_APU_H
 #define NES_VRC7_APU_H
 
 #include "blargg_common.h"
 #include "Blip_Buffer.h"
+#include "gme.h" // nt-chiptune-player fork addition: gme_nsf_channel_state_t
 
 struct vrc7_snapshot_t;
 
@@ -23,6 +25,10 @@ public:
 	void osc_output( int index, Blip_Buffer* );
 	void end_frame( blip_time_t );
 	void save_snapshot( vrc7_snapshot_t* ) const;
+
+	// nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
+	// current raw state, for visualization (see gme_nsf_channel_state in gme.h).
+	void get_osc_state( int index, struct gme_nsf_channel_state_t* out ) const;
 	void load_snapshot( vrc7_snapshot_t const& );
 
 	void write_reg( int reg );

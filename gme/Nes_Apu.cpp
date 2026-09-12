@@ -280,6 +280,49 @@ static const unsigned char length_table [0x20] = {
 	0xC0, 0x18, 0x48, 0x1A, 0x10, 0x1C, 0x20, 0x1E
 };
 
+// nt-chiptune-player fork addition: read-only snapshot of oscillator `index`'s
+// raw state, for visualization (see gme_nsf_channel_state in gme.h). Uses the
+// same "playing" gate (length_counter > 0) the emulator itself uses to mute
+// finished notes (see write_register's 0x4015 handler above); period() divisors
+// (16 for pulse, 32 for triangle) are the standard NES APU pitch formulas
+// (f = clock / (divisor * (period + 1))), left to the caller (core/ nsf_engine)
+// to convert to MIDI keycode alongside the CPU clock constant.
+void Nes_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
+{
+	require( (unsigned) index < osc_count );
+	memset( out, 0, sizeof *out );
+	out->chip_id = 0; // 2A03; Nes_Mmc5_Apu::get_osc_state overrides this
+	Nes_Osc const& osc = *oscs[index];
+	switch ( index )
+	{
+	case 0: case 1: // square1, square2
+	{
+		Nes_Square const& sq = (index == 0) ? square1 : square2;
+		out->enabled = (unsigned char) (osc.length_counter > 0);
+		out->channel_vol = (unsigned char) sq.volume();
+		out->period = (unsigned short) osc.period();
+		break;
+	}
+	case 2: // triangle
+		out->enabled = (unsigned char) (osc.length_counter > 0 && triangle.linear_counter > 0);
+		out->channel_vol = out->enabled ? 15 : 0; // triangle has no volume control
+		out->period = (unsigned short) osc.period();
+		break;
+	case 3: // noise
+		out->enabled = (unsigned char) (osc.length_counter > 0);
+		out->noise_on = 1;
+		out->channel_vol = (unsigned char) noise.volume();
+		out->period = 0; // not pitched in the musical sense; keycode stays invalid
+		break;
+	case 4: // dmc
+		out->enabled = (unsigned char) (dmc.length_counter > 0 || dmc.buf_full);
+		out->channel_vol = (unsigned char) (dmc.dac >> 3); // 7-bit DAC -> 0-15
+		out->period = 0; // playback rate, not a musical pitch
+		break;
+	}
+	out->gain_l = out->gain_r = (short) osc.last_amp;
+}
+
 void Nes_Apu::write_register( nes_time_t time, nes_addr_t addr, int data )
 {
 	require( addr > 0x20 ); // addr must be actual address (i.e. 0x40xx)
