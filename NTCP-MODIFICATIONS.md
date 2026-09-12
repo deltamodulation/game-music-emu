@@ -479,6 +479,32 @@ untouched). Verified locally: ctest (core host-debug preset) 378/378 green
 documented this alongside the pre-existing `wave_size != 0` unreachability
 note. No code change, no behavior change.
 
+### 2026-09-12 (8): 2A03 triangle get_osc_state() also mirrors run()'s timer_period floor (PR #573 review Round 3 M-11)
+
+The square/noise fix above (entry 6) still left the same class of gap on the
+triangle case: `Nes_Triangle::run()` mutes when
+`!(length_counter && linear_counter && timer_period >= 3)` (`timer_period =
+period() + 1`), but `get_osc_state()`'s triangle case only checked
+`length_counter > 0 && linear_counter > 0`, missing `timer_period < 3`.
+
+- `gme/Nes_Apu.cpp` `get_osc_state()`: triangle case now also requires
+  `osc.period() + 1 >= 3` in `enabled` (computed once, matching `run()`'s
+  `timer_period` naming/formula exactly).
+
+No ABI change. No change to `run()`/`run_until()`. Verified locally: ctest
+(core host-debug preset) 378/378 green (bit-exact golden unaffected).
+
+**Known limitation (documented, not a defect in this fix)**: unlike the
+square/noise fix, this one has no dedicated regression test. A host-side
+dump of both real NSF files already in this repo's test corpus (King of
+Kings, Megami Tensei II) over 300 render frames each found the triangle
+channel's `period` never drops below ~257 (far above the `timer_period < 3`
+threshold), so there is no real data available to exercise this branch, and
+authoring a synthetic NSF ROM that drives the triangle at that extreme a
+frequency is out of scope for this fix. The change is verified by direct
+comparison against `Nes_Triangle::run()`'s condition (verbatim match) and by
+the full existing test suite remaining green.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

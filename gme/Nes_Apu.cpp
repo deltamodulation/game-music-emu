@@ -330,10 +330,18 @@ void Nes_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
 		break;
 	}
 	case 2: // triangle
-		out->enabled = (unsigned char) (osc.length_counter > 0 && triangle.linear_counter > 0);
+	{
+		// mirrors Nes_Triangle::run()'s mute check verbatim: `if (length_counter
+		// && linear_counter && timer_period >= 3)` gates output, where
+		// `timer_period = period() + 1` (PR #573 review Round 3 M-11 -- the
+		// square/noise fix above missed this same class of gap on triangle).
+		int const timer_period = osc.period() + 1;
+		out->enabled = (unsigned char)
+			(osc.length_counter > 0 && triangle.linear_counter > 0 && timer_period >= 3);
 		out->channel_vol = out->enabled ? 15 : 0; // triangle has no volume control
 		out->period = (unsigned short) osc.period();
 		break;
+	}
 	case 3: // noise
 	{
 		int const volume = noise.volume();
