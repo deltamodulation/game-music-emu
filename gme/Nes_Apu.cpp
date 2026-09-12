@@ -289,6 +289,20 @@ static const unsigned char length_table [0x20] = {
 // (16 for pulse, 32 for triangle) are the standard NES APU pitch formulas
 // (f = clock / (divisor * (period + 1))), left to the caller (core/ nsf_engine)
 // to convert to MIDI keycode alongside the CPU clock constant.
+// Issue #572 follow-up: `length_counter > 0` alone is not the same "is this
+// oscillator actually producing sound" gate `run()` uses -- both
+// Nes_Square::run() and Nes_Noise::run() additionally mute on `volume() == 0`
+// (an envelope that decayed to silence, or a driver holding a note at zero
+// volume, while the length counter is still running), and Nes_Square::run()
+// further mutes when `period < 8` or a sweep push would move the period
+// `>= 0x800` (the exact conditions Nes_Square::run() checks -- mirrored here
+// verbatim, including the sweep `offset`/`negate_flag` computation). Without
+// these, `enabled` (and therefore the keyboard highlight, since keycode_for()
+// only looks at `enabled`/`period`) could stay true for a channel `run()`
+// itself is not emitting any signal for -- a "silent channel still lit"
+// symptom, the same class of bug Issue #572's N163 fix addressed, confirmed
+// on real NSF data (King of Kings, Megami Tensei II: PUL1/PUL2 report
+// enabled=true/channel_vol=0 for the entire observed duration).
 void Nes_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
 {
 	require( (unsigned) index < osc_count );
@@ -300,9 +314,19 @@ void Nes_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
 	case 0: case 1: // square1, square2
 	{
 		Nes_Square const& sq = (index == 0) ? square1 : square2;
-		out->enabled = (unsigned char) (osc.length_counter > 0);
-		out->channel_vol = (unsigned char) sq.volume();
-		out->period = (unsigned short) osc.period();
+		int const period = sq.period();
+		int const volume = sq.volume();
+		// mirrors Nes_Square::run()'s sweep-overflow mute check exactly
+		// (including negate_flag zeroing offset, so a downward sweep never
+		// falsely trips this check).
+		int const shift = sq.regs [1] & Nes_Square::shift_mask;
+		int offset = period >> shift;
+		if ( sq.regs [1] & Nes_Square::negate_flag )
+			offset = 0;
+		bool const muted = volume == 0 || period < 8 || (period + offset) >= 0x800;
+		out->enabled = (unsigned char) (osc.length_counter > 0 && !muted);
+		out->channel_vol = (unsigned char) volume;
+		out->period = (unsigned short) period;
 		break;
 	}
 	case 2: // triangle
@@ -311,11 +335,14 @@ void Nes_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
 		out->period = (unsigned short) osc.period();
 		break;
 	case 3: // noise
-		out->enabled = (unsigned char) (osc.length_counter > 0);
+	{
+		int const volume = noise.volume();
+		out->enabled = (unsigned char) (osc.length_counter > 0 && volume != 0);
 		out->noise_on = 1;
-		out->channel_vol = (unsigned char) noise.volume();
+		out->channel_vol = (unsigned char) volume;
 		out->period = 0; // not pitched in the musical sense; keycode stays invalid
 		break;
+	}
 	case 4: // dmc
 		out->enabled = (unsigned char) (dmc.length_counter > 0 || dmc.buf_full);
 		out->channel_vol = (unsigned char) (dmc.dac >> 3); // 7-bit DAC -> 0-15

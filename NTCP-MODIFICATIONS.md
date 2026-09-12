@@ -446,6 +446,39 @@ No ABI change. No change to `run_until()`. Verified locally: ctest (core
 host-debug preset) 377/377 green (bit-exact golden unaffected -- this getter
 is not on the audio path).
 
+### 2026-09-12 (6): 2A03 square/noise `get_osc_state()` also mirrors run()'s mute conditions (PR #573 review, user device report)
+
+After the N163 fix above, the user found the same class of bug on the 2A03
+side: `Nes_Apu::get_osc_state()`'s square (PUL1/PUL2) case gated `enabled` on
+`length_counter > 0` alone, never checking the mute conditions
+`Nes_Square::run()` itself applies (`volume() == 0`, `period < 8`, or a sweep
+push moving `period >= 0x800`). The length counter is note-duration
+bookkeeping; it does not go to zero just because the envelope decayed to
+silence, so a channel could sit at `enabled=true`/`channel_vol=0` indefinitely
+-- confirmed on real data (Megami Tensei II and user-provided King of Kings,
+both showing PUL1/PUL2 stuck at `enabled=true, volume=0` for the entire
+observed 300-frame window, ~19s). The noise case had the analogous gap
+(`Nes_Noise::run()` mutes on `volume()==0`, `get_osc_state()` didn't check it).
+
+Fixed by mirroring `Nes_Square::run()`'s mute check verbatim (same sweep
+`offset`/`negate_flag` computation) and adding `volume()!=0` to the noise
+case.
+
+- `gme/Nes_Apu.cpp` `get_osc_state()`: square case now computes `period`,
+  `volume`, and the sweep-overflow `offset` the same way `run()` does, and
+  ANDs `!muted` into `enabled`; noise case ANDs `volume!=0` into `enabled`.
+
+No ABI change. No change to `run()`/`run_until()` (audio output path
+untouched). Verified locally: ctest (core host-debug preset) 378/378 green
+(bit-exact golden unaffected -- this getter is not on the audio path).
+
+### 2026-09-12 (7): N163 `get_osc_state()` comment-only follow-up (PR #573 review Round 2 L-5)
+
+`freq != 0` in the `period` calculation's guard is unreachable once `enabled`
+(which now implies `freq >= 64*active_oscs >= 64`) gates the whole block --
+documented this alongside the pre-existing `wave_size != 0` unreachability
+note. No code change, no behavior change.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

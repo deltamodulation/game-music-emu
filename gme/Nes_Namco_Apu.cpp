@@ -191,7 +191,10 @@ void Nes_Namco_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) con
 		// so `wave_size != 0` can never actually fail -- kept only to mirror the
 		// same defensive shape run_until() above already uses for the identical
 		// expression (PR #570 review round 1 SEC-L-1: confirmed unreachable, not
-		// a real guard).
+		// a real guard). `freq != 0` is likewise unreachable here since
+		// `out->enabled` (guarding this whole block) already implies
+		// `freq >= 64 * active_oscs >= 64` (PR #573 review Round 2 L-5) -- kept
+		// for the same mirror-run_until()-shape reason as `wave_size != 0`.
 		if ( freq != 0 && wave_size != 0 )
 		{
 			double const ratio = 983040.0 * active_oscs * wave_size / (double) freq;
