@@ -505,6 +505,80 @@ frequency is out of scope for this fix. The change is verified by direct
 comparison against `Nes_Triangle::run()`'s condition (verbatim match) and by
 the full existing test suite remaining green.
 
+### 2026-09-13: NSF FDS + bank-switched titles -- `$5FF6`/`$5FF7` (`$6000`-`$7FFF` window) were never handled (Issue #578)
+
+nt-chiptune-player Issue #578: a machine sweep of real NSF + M3U data found
+21 tracks across 3 FDS-equipped, bank-switched titles (Almana no Kiseki,
+Castlevania 2 - Simon's Quest, Famicom Grand Prix II) that never produced
+audible output, plus one title (The Legend of Zelda 2) whose every track
+failed to load at all.
+
+Root cause, confirmed by instrumentation (temporary, not committed) that
+dumped writes into `Nsf_Emu::cpu_write` and `Nes_Fds_Apu::write_` while
+rendering Almana no Kiseki track 0/1: `Nsf_Emu` only ever mapped the 8
+standard bank-select registers `$5FF8`-`$5FFF` (selecting 4KB pages into
+`$8000`-`$FFFF`). Per the NSF spec, an FDS-equipped, bank-switched title also
+uses `$5FF6`/`$5FF7` to bank-switch the `$6000`-`$7FFF` FDS RAM window
+(initialized from header bank bytes 6/7, the same bytes already used for
+`$5FFE`/`$5FFF`), but this fork's `cpu_write` had no case for those two
+addresses -- writes to them silently fell through to the unmapped-write
+debug path and were dropped. Since NSF drivers commonly stage a song's FDS
+wavetable and/or code through that window before playing a note, the window
+staying permanently zero-filled left either dead code (crash/no-op) or an
+all-zero FDS wavetable (silent output) at that address range, depending on
+the title. Separately, `Nsf_Emu::load_()` rejected `load_addr`/`init_addr`
+below `rom_begin` ($8000) unconditionally; Zelda 2's NSF places `load_addr`
+at `$6000` (inside the FDS window), which this floor rejected outright as
+"Corrupt file", independent of the bank-switch bug.
+
+Fixed, scoped to FDS-equipped titles only (`fds` non-null; the ordinary
+8-register path and the `rom_begin` floor for non-FDS files are byte-for-byte
+unchanged):
+
+- `gme/nes_cpu_io.h` `cpu_write()`: added a case for `$5FF6`/`$5FF7` (checked
+  before the existing `$5FF8`-`$5FFF` bank_select_addr case, gated on
+  `fds != 0`) that copies the selected 4KB ROM bank directly into the `sram`
+  array at offset 0/`bank_size`. This mirrors the existing `$5FF8`-`$5FFF`
+  case's bank lookup (`rom.mask_addr`/`rom.at_addr`) but targets `sram`
+  instead of `cpu::map_code`, because reads of `$6000`-`$7FFF` already go
+  through the flat `sram` array in `cpu_read()` (not through
+  `cpu::get_code`), and that same `sram` buffer is what `map_code(sram_addr,
+  ...)` in `start_track_` points CPU code fetches at -- so writing into
+  `sram` keeps both instruction fetch and data reads of that window
+  consistent with the newly-selected bank.
+- `gme/Nsf_Emu.h`/`gme/Nsf_Emu.cpp`: added a `fds_bankswitched` member, set
+  in `load_()` exactly when the existing header-bank-switch detection loop
+  finds a nonzero `header_.banks[i]` (same condition already used to copy
+  the raw header bank array into `initial_banks`). `start_track_()` now also
+  applies `initial_banks[6]`/`initial_banks[7]` to `$5FF6`/`$5FF7` via the
+  new `cpu_write` case (in addition to their existing, unchanged application
+  to `$5FFE`/`$5FFF` via the 8-register loop) when `fds && fds_bankswitched`,
+  matching the NSF spec's initial-value rule for FDS titles.
+- `gme/Nsf_Emu.cpp` `load_()`: the `load_addr < rom_begin || init_addr <
+  rom_begin` rejection now uses `sram_addr` ($6000) instead of `rom_begin`
+  ($8000) as the floor when `fds` is set, since FDS titles may legitimately
+  place load/init inside the FDS RAM window.
+
+Verified against real data (`test-data/nsf`, not committed; see
+`docs/research/2026-09-13-issue578-nsf-silent-m3u-tracks.md` for the
+before/after measurement): 9 of Almana no Kiseki's 10 previously
+never-audible M3U tracks, and all of Castlevania 2's and Famicom Grand Prix
+II's previously never-audible tracks, are now audible; Zelda 2 now loads
+successfully. Track 0 ("Almana Stolen") remains silent after this fix -- its
+FDS driver explicitly sets the wave-halt bit (`$4083` bit 7) during its init
+routine and no further FDS register writes are observed for the remainder of
+the song's declared length in this fork's emulation, which may be a genuine
+compositional silence (a short stinger/cutscene cue) or a separate,
+unconfirmed emulation gap; tracked as a known limitation, not re-opened by
+this fix (see ADR 0070 addendum for Issue #578).
+
+No ABI change. Bit-exact golden output unaffected: verified locally with
+`ctest` (core host-debug preset), full suite 380/380 green, including
+`Golden.BitExactAgainstManifest` (this fix's gate is `fds != 0`, and no
+golden fixture in this repo's manifest is an FDS-equipped NSF, so the new
+code paths are not exercised by the golden fixtures at all -- confirmed by
+`git grep` over the golden manifest showing no `chip_flags` FDS entries).
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

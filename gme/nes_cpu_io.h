@@ -1,3 +1,4 @@
+// Modified 2026-09-13 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Nsf_Emu.h"
 
@@ -8,6 +9,7 @@
 #endif
 
 #include "blargg_source.h"
+#include <string.h>
 
 int Nsf_Emu::cpu_read( nes_addr_t addr )
 {
@@ -77,6 +79,25 @@ void Nsf_Emu::cpu_write( nes_addr_t addr, int data )
 		GME_APU_HOOK( this, addr - Nes_Apu::start_addr, data );
 		apu.write_register( cpu::time(), addr, data );
 		return;
+	}
+
+	// nt-chiptune-player fork addition (Issue #578): $5FF6/$5FF7 are FDS-only
+	// registers (not part of the ordinary 8-register $5FF8-$5FFF scheme) that
+	// bank-switch the $6000-$7FFF FDS RAM window. Reads of that window go
+	// through the flat `sram` array (see cpu_read above), not cpu::get_code,
+	// so the selected ROM bank is copied into `sram` directly rather than
+	// mapped -- see NTCP-MODIFICATIONS.md.
+	if ( fds )
+	{
+		unsigned fds_bank = addr - 0x5FF6;
+		if ( fds_bank < 2 )
+		{
+			int32_t offset = rom.mask_addr( data * (int32_t) bank_size );
+			if ( offset >= rom.size() )
+				set_warning( "Invalid bank" );
+			memcpy( sram + fds_bank * bank_size, rom.at_addr( offset ), bank_size );
+			return;
+		}
 	}
 
 	unsigned bank = addr - bank_select_addr;

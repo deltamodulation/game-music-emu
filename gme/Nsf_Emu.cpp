@@ -354,7 +354,11 @@ blargg_err_t Nsf_Emu::load_( Data_Reader& in )
 	if ( !load_addr ) load_addr = rom_begin;
 	if ( !init_addr ) init_addr = rom_begin;
 	if ( !play_addr ) play_addr = rom_begin;
-	if ( load_addr < rom_begin || init_addr < rom_begin )
+	// nt-chiptune-player fork addition (Issue #578): FDS-equipped NSFs may
+	// place load/init in the $6000-$7FFF FDS RAM window (sram_addr), below
+	// the ordinary rom_begin ($8000) floor -- see NTCP-MODIFICATIONS.md.
+	const nes_addr_t addr_floor = fds ? sram_addr : rom_begin;
+	if ( load_addr < addr_floor || init_addr < addr_floor )
 	{
 		const char* w = warning();
 		if ( !w )
@@ -366,6 +370,7 @@ blargg_err_t Nsf_Emu::load_( Data_Reader& in )
 	int total_banks = rom.size() / bank_size;
 
 	// bank switching
+	fds_bankswitched = false;
 	int first_bank = (load_addr - rom_begin) / bank_size;
 	for ( int i = 0; i < bank_count; i++ )
 	{
@@ -378,6 +383,7 @@ blargg_err_t Nsf_Emu::load_( Data_Reader& in )
 		{
 			// bank-switched
 			memcpy( initial_banks, header_.banks, sizeof initial_banks );
+			fds_bankswitched = true;
 			break;
 		}
 	}
@@ -580,6 +586,15 @@ blargg_err_t Nsf_Emu::start_track_( int track )
 	cpu::map_code( sram_addr, sizeof sram, sram );
 	for ( int i = 0; i < bank_count; ++i )
 		cpu_write( bank_select_addr + i, initial_banks [i] );
+	// nt-chiptune-player fork addition (Issue #578): FDS + bank-switched NSFs
+	// reuse header banks[6]/[7] (already applied above via $5FFE/$5FFF) as the
+	// initial $6000-$7FFF windows, applied via the FDS-only $5FF6/$5FF7
+	// registers -- see NTCP-MODIFICATIONS.md.
+	if ( fds && fds_bankswitched )
+	{
+		cpu_write( 0x5FF6, initial_banks [6] );
+		cpu_write( 0x5FF7, initial_banks [7] );
+	}
 
 	apu.reset( pal_only, (header_.speed_flags & 0x20) ? 0x3F : 0 );
 	apu.write_register( 0, 0x4015, 0x0F );

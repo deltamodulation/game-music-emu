@@ -77,6 +77,11 @@ protected:
 protected:
 	enum { bank_count = 8 };
 	byte initial_banks [bank_count];
+	// nt-chiptune-player fork addition (Issue #578): true when the header
+	// declares bank switching (see load_()). Gates whether banks[6]/[7] are
+	// also applied to the FDS-only $5FF6/$5FF7 registers ($6000-$7FFF window)
+	// in start_track_ -- see NTCP-MODIFICATIONS.md.
+	bool fds_bankswitched;
 	nes_addr_t init_addr;
 	nes_addr_t play_addr;
 	double clock_rate_;
