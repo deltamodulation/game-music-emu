@@ -81,13 +81,19 @@ void Nsf_Emu::cpu_write( nes_addr_t addr, int data )
 		return;
 	}
 
-	// nt-chiptune-player fork addition (Issue #578): $5FF6/$5FF7 are FDS-only
-	// registers (not part of the ordinary 8-register $5FF8-$5FFF scheme) that
-	// bank-switch the $6000-$7FFF FDS RAM window. Reads of that window go
-	// through the flat `sram` array (see cpu_read above), not cpu::get_code,
-	// so the selected ROM bank is copied into `sram` directly rather than
-	// mapped -- see NTCP-MODIFICATIONS.md.
-	if ( fds )
+	// nt-chiptune-player fork addition (Issue #578, PR #580 review M-1): $5FF6/
+	// $5FF7 are FDS-only registers (not part of the ordinary 8-register
+	// $5FF8-$5FFF scheme) that bank-switch the $6000-$7FFF FDS RAM window.
+	// Gated on `fds && fds_bankswitched` (not `fds` alone): a non-bank-switched
+	// FDS title has no declared bank data for this window and may be using
+	// $6000-$7FFF as ordinary battery/work RAM (already read/written as `sram`
+	// unconditionally elsewhere in this function and in cpu_read()) -- treating
+	// writes to $5FF6/$5FF7 as bank-select for such a title would clobber that
+	// RAM with unrelated ROM bytes. Reads of the window go through the flat
+	// `sram` array (see cpu_read above), not cpu::get_code, so the selected ROM
+	// bank is copied into `sram` directly rather than mapped -- see
+	// NTCP-MODIFICATIONS.md.
+	if ( fds && fds_bankswitched )
 	{
 		unsigned fds_bank = addr - 0x5FF6;
 		if ( fds_bank < 2 )

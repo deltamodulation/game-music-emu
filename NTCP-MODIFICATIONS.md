@@ -531,33 +531,44 @@ below `rom_begin` ($8000) unconditionally; Zelda 2's NSF places `load_addr`
 at `$6000` (inside the FDS window), which this floor rejected outright as
 "Corrupt file", independent of the bank-switch bug.
 
-Fixed, scoped to FDS-equipped titles only (`fds` non-null; the ordinary
-8-register path and the `rom_begin` floor for non-FDS files are byte-for-byte
-unchanged):
+Fixed, scoped to FDS-equipped, **bank-switched** titles only (`fds &&
+fds_bankswitched`; a non-bank-switched FDS title -- header `banks[]` all
+zero -- keeps the exact pre-fix behavior on both counts below, per PR #580
+review M-1/M-2, see the 2026-09-13 follow-up entry further down for why the
+initial version of this patch gated on `fds` alone and what changed):
 
 - `gme/nes_cpu_io.h` `cpu_write()`: added a case for `$5FF6`/`$5FF7` (checked
   before the existing `$5FF8`-`$5FFF` bank_select_addr case, gated on
-  `fds != 0`) that copies the selected 4KB ROM bank directly into the `sram`
-  array at offset 0/`bank_size`. This mirrors the existing `$5FF8`-`$5FFF`
-  case's bank lookup (`rom.mask_addr`/`rom.at_addr`) but targets `sram`
-  instead of `cpu::map_code`, because reads of `$6000`-`$7FFF` already go
-  through the flat `sram` array in `cpu_read()` (not through
+  `fds && fds_bankswitched`) that copies the selected 4KB ROM bank directly
+  into the `sram` array at offset 0/`bank_size`. This mirrors the existing
+  `$5FF8`-`$5FFF` case's bank lookup (`rom.mask_addr`/`rom.at_addr`) but
+  targets `sram` instead of `cpu::map_code`, because reads of `$6000`-`$7FFF`
+  already go through the flat `sram` array in `cpu_read()` (not through
   `cpu::get_code`), and that same `sram` buffer is what `map_code(sram_addr,
   ...)` in `start_track_` points CPU code fetches at -- so writing into
   `sram` keeps both instruction fetch and data reads of that window
-  consistent with the newly-selected bank.
-- `gme/Nsf_Emu.h`/`gme/Nsf_Emu.cpp`: added a `fds_bankswitched` member, set
-  in `load_()` exactly when the existing header-bank-switch detection loop
-  finds a nonzero `header_.banks[i]` (same condition already used to copy
-  the raw header bank array into `initial_banks`). `start_track_()` now also
+  consistent with the newly-selected bank. A non-bank-switched FDS title's
+  writes to `$5FF6`/`$5FF7` fall through to the unmapped-write debug path,
+  same as before this fix (such a title has no declared bank data for this
+  window and may be using `$6000`-`$7FFF` as ordinary work/battery RAM,
+  already read/written unconditionally as flat `sram` elsewhere).
+- `gme/Nsf_Emu.h`/`gme/Nsf_Emu.cpp`: added a `fds_bankswitched` member,
+  detected in `load_()` from the header alone (nonzero `header_.banks[i]`,
+  same condition the existing bank-assignment loop already used to decide
+  whether to copy the raw header bank array into `initial_banks`) before the
+  address-floor check below, since both need it. `start_track_()` also
   applies `initial_banks[6]`/`initial_banks[7]` to `$5FF6`/`$5FF7` via the
   new `cpu_write` case (in addition to their existing, unchanged application
   to `$5FFE`/`$5FFF` via the 8-register loop) when `fds && fds_bankswitched`,
   matching the NSF spec's initial-value rule for FDS titles.
 - `gme/Nsf_Emu.cpp` `load_()`: the `load_addr < rom_begin || init_addr <
   rom_begin` rejection now uses `sram_addr` ($6000) instead of `rom_begin`
-  ($8000) as the floor when `fds` is set, since FDS titles may legitimately
-  place load/init inside the FDS RAM window.
+  ($8000) as the floor when `fds && fds_bankswitched`, since such titles may
+  legitimately place load/init inside the FDS RAM window. A non-bank-switched
+  FDS title keeps the original `rom_begin` floor and the original "Corrupt
+  file" rejection for `load_addr` < $8000 (no declared bank data exists to
+  seed the window in that case, so `first_bank` would otherwise go negative
+  and only alias into $8000+ while leaving the window zero-filled).
 
 Verified against real data (`test-data/nsf`, not committed; see
 `docs/research/2026-09-13-issue578-nsf-silent-m3u-tracks.md` for the
@@ -573,11 +584,63 @@ unconfirmed emulation gap; tracked as a known limitation, not re-opened by
 this fix (see ADR 0070 addendum for Issue #578).
 
 No ABI change. Bit-exact golden output unaffected: verified locally with
-`ctest` (core host-debug preset), full suite 380/380 green, including
-`Golden.BitExactAgainstManifest` (this fix's gate is `fds != 0`, and no
-golden fixture in this repo's manifest is an FDS-equipped NSF, so the new
-code paths are not exercised by the golden fixtures at all -- confirmed by
-`git grep` over the golden manifest showing no `chip_flags` FDS entries).
+`ctest` (core host-debug preset), full suite green (see the 2026-09-13
+follow-up entry below for the post-review test count). This fix's gate is
+`fds && fds_bankswitched`, and `core/tests/golden/manifest.tsv` (2 NSF rows:
+`Super Mario Bros. ...nsf` = 2A03-only, `vrc6-init.nsf` = VRC6-only, verified
+by reading the manifest directly -- it has no `chip_flags` column to `git
+grep` for) contains no FDS-equipped NSF, so the new code paths are not
+exercised by the golden fixtures at all. Golden green therefore does not
+demonstrate correctness of the new code paths; see nt-chiptune-player's ADR
+0023 addendum for Issue #578 for what evidence does (real-data before/after
+plus a corpus-invariance check over the tracks the fix does not touch).
+
+### 2026-09-13 (follow-up): tighten the Issue #578 gate to `fds && fds_bankswitched` (PR #580 review M-1/M-2)
+
+Code review on nt-chiptune-player PR #580 (M-1/M-2) found that the initial
+version of the Issue #578 patch above gated `cpu_write()`'s new `$5FF6`/
+`$5FF7` case on `fds` alone, while `start_track_()`'s initial-value
+application already gated on `fds && fds_bankswitched`. This asymmetry meant
+an FDS-equipped title that does **not** declare bank switching (header
+`banks[]` all zero) would, after the initial patch, have any runtime write to
+`$5FF6`/`$5FF7` treated as a bank-select and overwrite 4KB of its
+`$6000`-`$7FFF` window with unrelated ROM bytes -- a window such a title may
+be using as ordinary work/battery RAM. Separately, the `load_()` address
+floor relaxation had the same gap: a non-bank-switched FDS title with
+`load_addr` < `$8000` would newly pass the address check (gate was `fds`
+alone) but get no bank-6/7 seed data for the window (only bank-switched
+titles copy `header_.banks` into `initial_banks`), turning a previous
+explicit "Corrupt file" rejection into a silent, hard-to-diagnose failure.
+
+Fixed by moving the bank-switch declaration check (nonzero `header_.banks[i]`)
+earlier in `load_()` -- it no longer depends on `load_addr`/`rom.set_addr()`
+having run -- and using it consistently in all three places: the `cpu_write()`
+`$5FF6`/`$5FF7` case, `start_track_()`'s initial-value application (already
+correct), and the `load_()` address floor. A non-bank-switched FDS title now
+gets byte-for-byte the same behavior as before the Issue #578 patch on both
+counts: `$5FF6`/`$5FF7` writes fall through to the unmapped-write debug path,
+and `load_addr`/`init_addr` < `$8000` is still rejected as "Corrupt file".
+
+No real-data title in this repo's `test-data/nsf` corpus exercises the
+non-bank-switched-FDS-with-low-load-addr combination this closes a gap for
+(all 4 titles affected by the original Issue #578 fix are bank-switched), so
+this change is unverified against real data; it is verified by (a) the
+existing Issue #578 regression tests (2 real-data + 2 synthetic, unaffected
+-- all 4 titles are bank-switched) remaining green, and (b) code reading
+confirming the three gate sites now use the identical condition.
+
+Also added, same review round:
+- `gme/Nsf_Emu.cpp` constructor: initialize `fds_bankswitched = false`
+  (M-1's sibling nit L-1 -- matches the existing `fds = 0` etc. discipline;
+  `load_()` was already the only place it was previously set, before any
+  code path could read it, so this is defense-in-depth, not a fix for an
+  observed bug).
+
+Files touched: `gme/nes_cpu_io.h`, `gme/Nsf_Emu.cpp`. No ABI change. Verified
+locally: `ctest` (core host-debug preset) full suite green (382 tests: adds
+`NsfEngine.FdsInitialBankApplicationEnablesAudioSynthetic`, a second CI-run
+synthetic regression test for the `start_track_()` initial-application path
+specifically, per PR #580 review M-6).
 
 ## Known upstream bugs (not modified)
 

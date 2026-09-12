@@ -61,6 +61,7 @@ Nsf_Emu::Nsf_Emu()
 	fds   = 0;
 	mmc5  = 0;
 	vrc7  = 0;
+	fds_bankswitched = false;  // PR #580 review L-1: match fds/etc ctor init discipline
 
 	set_type( gme_nsf_type );
 	set_silence_lookahead( 6 );
@@ -354,10 +355,33 @@ blargg_err_t Nsf_Emu::load_( Data_Reader& in )
 	if ( !load_addr ) load_addr = rom_begin;
 	if ( !init_addr ) init_addr = rom_begin;
 	if ( !play_addr ) play_addr = rom_begin;
-	// nt-chiptune-player fork addition (Issue #578): FDS-equipped NSFs may
-	// place load/init in the $6000-$7FFF FDS RAM window (sram_addr), below
-	// the ordinary rom_begin ($8000) floor -- see NTCP-MODIFICATIONS.md.
-	const nes_addr_t addr_floor = fds ? sram_addr : rom_begin;
+	// nt-chiptune-player fork addition (Issue #578, PR #580 review M-1/M-2): only
+	// FDS-equipped titles that also declare bank switching (header banks[] has a
+	// nonzero entry) get the $6000-$7FFF FDS RAM window treatment -- both the
+	// relaxed address floor below and the $5FF6/$5FF7 write handling in
+	// cpu_write() (nes_cpu_io.h) gate on `fds && fds_bankswitched`. A
+	// non-bank-switched FDS title has no declared initial content for that
+	// window (no `header_.banks[6]`/`[7]` to seed it) and its `load_addr` still
+	// has to land in the single linear $8000-$FFFF bank_count*bank_size region
+	// like an ordinary title, so it keeps the original rom_begin ($8000) floor
+	// and the original "Corrupt file" rejection for load_addr < $8000 -- see
+	// NTCP-MODIFICATIONS.md.
+	//
+	// `fds_bankswitched` must be known before the address-floor check below, so
+	// bank-switch declaration is detected here from the header alone (does not
+	// depend on load_addr/rom.set_addr()); the loop further down still performs
+	// the actual bank assignment and re-derives the same flag.
+	fds_bankswitched = false;
+	for ( int i = 0; i < bank_count; i++ )
+	{
+		if ( header_.banks [i] )
+		{
+			fds_bankswitched = true;
+			break;
+		}
+	}
+
+	const nes_addr_t addr_floor = (fds && fds_bankswitched) ? sram_addr : rom_begin;
 	if ( load_addr < addr_floor || init_addr < addr_floor )
 	{
 		const char* w = warning();
@@ -370,7 +394,6 @@ blargg_err_t Nsf_Emu::load_( Data_Reader& in )
 	int total_banks = rom.size() / bank_size;
 
 	// bank switching
-	fds_bankswitched = false;
 	int first_bank = (load_addr - rom_begin) / bank_size;
 	for ( int i = 0; i < bank_count; i++ )
 	{
@@ -383,7 +406,6 @@ blargg_err_t Nsf_Emu::load_( Data_Reader& in )
 		{
 			// bank-switched
 			memcpy( initial_banks, header_.banks, sizeof initial_banks );
-			fds_bankswitched = true;
 			break;
 		}
 	}
