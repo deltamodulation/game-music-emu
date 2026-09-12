@@ -254,7 +254,7 @@ remove existing fields. */
 typedef struct gme_nsf_channel_state_t
 {
 	unsigned char enabled;     /* channel currently gated on (chip-specific "playing" signal, e.g. length counter > 0) */
-	unsigned char chip_id;     /* 0=2A03, 1=VRC6, 2=VRC7, 3=FDS, 4=N163(Namco 106), 5=S5B(Sunsoft FME-7) */
+	unsigned char chip_id;     /* 0=2A03, 1=VRC6, 2=VRC7, 3=FDS, 4=N163(Namco 106), 5=S5B(Sunsoft FME-7), 6=MMC5 */
 	unsigned char noise_on;    /* 2A03 noise channel only: always 1 for that voice, else 0 */
 	unsigned char channel_vol; /* raw volume/envelope/gain, 0-15 (chip-specific scale; 2A03 DMC uses DAC>>3) */
 	unsigned char reserved0;   /* ABI parity with gme_hes_channel_state_t (was balance); always 0, reserved */

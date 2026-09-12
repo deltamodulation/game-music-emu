@@ -1,4 +1,5 @@
 // Nes_Snd_Emu 0.1.8. http://www.slack.net/~ant/
+// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Nes_Namco_Apu.h"
 

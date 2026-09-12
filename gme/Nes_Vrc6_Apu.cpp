@@ -1,4 +1,5 @@
 // Nes_Snd_Emu 0.1.8. http://www.slack.net/~ant/
+// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Nes_Vrc6_Apu.h"
 
@@ -88,7 +89,7 @@ void Nes_Vrc6_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) cons
 	else
 	{
 		out->enabled = (unsigned char) (gate_or_enabled && osc.amp != 0);
-		out->channel_vol = (unsigned char) std::min( osc.amp, 63 ) >> 2; // 6-bit accumulator -> 0-15
+		out->channel_vol = (unsigned char)( std::min( osc.amp, 63 ) >> 2 ); // 6-bit accumulator -> 0-15
 	}
 	out->period = (unsigned short) osc.period();
 	out->gain_l = out->gain_r = (short) osc.last_amp;
