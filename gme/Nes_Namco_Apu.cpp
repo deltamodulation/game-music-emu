@@ -169,6 +169,11 @@ void Nes_Namco_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) con
 		const uint8_t* osc_reg = &reg [index * 8 + 0x40];
 		int32_t const freq = (osc_reg [4] & 3) * 0x10000 + osc_reg [2] * 0x100L + osc_reg [0];
 		int const wave_size = 32 - (osc_reg [4] >> 2 & 7) * 4;
+		// wave_size = 32 - (bits)*4 has a structural minimum of 4 (bits max 7),
+		// so `wave_size != 0` can never actually fail -- kept only to mirror the
+		// same defensive shape run_until() above already uses for the identical
+		// expression (PR #570 review round 1 SEC-L-1: confirmed unreachable, not
+		// a real guard).
 		if ( freq != 0 && wave_size != 0 )
 		{
 			double const ratio = 983040.0 * active_oscs * wave_size / (double) freq;

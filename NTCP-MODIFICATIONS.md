@@ -346,6 +346,37 @@ insertions only in the three files above (no deletions to pre-existing
 lines, aside from the two `period` assignment lines each getter replaces
 with the new decode).
 
+### 2026-09-12 (2): Fix FDS keycode octave error, dead N163 guard note, PR #570 review Round 1 (Issue #569)
+
+Follow-up to the same-day `get_osc_state()` entry above (2f27151), addressing
+PR #570 review round 1 findings on the fork side:
+
+- `gme/Nes_Fds_Apu.cpp` `get_osc_state()` (**H-1, bug fix**): the normalized
+  `period` conversion was missing a `wave_size` (0x40=64) factor. `run_until()`
+  clocks one wave *sample* every `fract_range/freq` (fract_range=65536) CPU
+  cycles, and a full cycle is `wave_size` samples, so `hz = clock*wave_freq /
+  (65536*wave_size)`, not `clock*wave_freq/65536` as the first version
+  computed. This put every FDS keycode 6 octaves (72 semitones) too high.
+  Fixed by multiplying by `wave_size`. Also reverted an unnecessary edit to
+  the pre-existing `run_until()` line (it had been changed from `regs(0x4083)`
+  to `regs_[0x4083-io_addr]` even though `run_until()` is non-const and the
+  original `regs()` accessor already worked there -- only the new *const*
+  getter needed the direct array access; **M-1**), and corrected a stale
+  comment above the getter that still said "period is left at 0" (**L-1**),
+  and documented that the getter approximates with the raw frequency register
+  rather than `run_until()`'s post-sweep/modulation `freq` (**L-2**).
+- `gme/Nes_Namco_Apu.cpp` `get_osc_state()` (**SEC-L-1, comment only**): added
+  a comment noting the `wave_size != 0` check mirrors `run_until()`'s
+  identically-shaped (and equally unreachable, `wave_size`'s structural
+  minimum is 4) defensive check -- not an actual guard, kept only for
+  parity/readability.
+
+No ABI change, no change to any other getter's fields. `git diff --stat
+2f27151..<this commit>` shows only `gme/Nes_Fds_Apu.cpp` and
+`gme/Nes_Namco_Apu.cpp`. Verified locally: `ctest --preset host-debug`
+376/376 green (mutation-confirmed: reverting the `wave_size` factor
+reproduces the old wrong value, see PR #570 for the raw failing output).
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork
