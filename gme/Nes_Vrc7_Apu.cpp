@@ -1,7 +1,5 @@
 #include "Nes_Vrc7_Apu.h"
 
-#include <string.h>
-
 extern "C" {
 #include "ext/emu2413.h"
 }
