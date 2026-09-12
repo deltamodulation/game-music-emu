@@ -318,6 +318,13 @@ void Nes_Fds_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
 	{
 		long norm = (long) (65536.0 * wave_size / (double) wave_freq + 0.5) - 1;
 		if ( norm < 0 )     norm = 0;
+		// PR #570 review round 1 H-1 follow-up (round 2 L-2): the *wave_size
+		// factor above means this clamp is now reachable for very low wave_freq
+		// (wave_freq < wave_size=64 saturates norm to 65535, i.e. a keycode near
+		// MIDI ~21/A0). That range corresponds to well under 30 Hz (clock/65536),
+		// far below any musically intended FDS pitch, so no further handling is
+		// added here -- confirmed by inspection of the formula, not measured
+		// against a real ROM that reaches it.
 		if ( norm > 65535 ) norm = 65535;
 		out->period = (unsigned short) norm;
 	}

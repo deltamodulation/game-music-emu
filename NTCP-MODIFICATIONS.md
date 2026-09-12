@@ -377,6 +377,16 @@ No ABI change, no change to any other getter's fields. `git diff --stat
 376/376 green (mutation-confirmed: reverting the `wave_size` factor
 reproduces the old wrong value, see PR #570 for the raw failing output).
 
+### 2026-09-12 (3): Document the FDS keycode clamp's saturation region, PR #570 review Round 2 L-2 (Issue #569)
+
+Comment-only follow-up to the Round 1 H-1 fix above: documents that the
+`wave_size` factor added in that fix makes the `norm > 65535` clamp
+reachable for very low `wave_freq` (below `wave_size`=64), saturating to a
+keycode near MIDI ~21 (A0) for pitches under ~27 Hz -- far below any
+musically intended FDS pitch. No code change, no ABI change, no behavior
+change (the clamp itself is unmodified; only a comment was added explaining
+when it engages).
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork
