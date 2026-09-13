@@ -258,7 +258,12 @@ typedef struct gme_nsf_channel_state_t
 	unsigned char noise_on;    /* 2A03 noise channel only: always 1 for that voice, else 0 */
 	unsigned char channel_vol; /* raw volume/envelope/gain, 0-15 (chip-specific scale; 2A03 DMC uses DAC>>3) */
 	unsigned char reserved0;   /* ABI parity with gme_hes_channel_state_t (was balance); always 0, reserved */
-	unsigned short period;     /* raw timer period register, chip-specific units (0 = keycode invalid) */
+	unsigned short period;     /* raw timer period register, chip-specific units (0 = keycode invalid).
+	                              nt-chiptune-player fork addition (Issue #587): for the 2A03 noise
+	                              voice (chip_id=0, noise_on=1) this instead carries the 4-bit noise
+	                              period-table index (regs[2] & 15, 0-15) -- 0 is a valid index here,
+	                              not "silent"; the caller maps it to a keyboard position for
+	                              visualization rather than treating it as a musical pitch. */
 	unsigned char reserved1;   /* ABI parity with gme_hes_channel_state_t (was noise_freq); always 0, reserved */
 	short gain_l;              /* proxy amplitude (last synthesized output delta accumulator) */
 	short gain_r;              /* same as gain_l -- NES/expansion voices in this fork are mono-routed internally */

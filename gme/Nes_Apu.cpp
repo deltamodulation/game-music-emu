@@ -348,7 +348,10 @@ void Nes_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
 		out->enabled = (unsigned char) (osc.length_counter > 0 && volume != 0);
 		out->noise_on = 1;
 		out->channel_vol = (unsigned char) volume;
-		out->period = 0; // not pitched in the musical sense; keycode stays invalid
+		// nt-chiptune-player fork addition (Issue #587): not pitched in the musical
+		// sense, but the caller (core/ nsf_engine) maps this period-table index to a
+		// keyboard position for visualization, so pack it instead of leaving 0.
+		out->period = (unsigned short) (osc.regs[2] & 15);
 		break;
 	}
 	case 4: // dmc

@@ -642,6 +642,25 @@ locally: `ctest` (core host-debug preset) full suite green (382 tests: adds
 synthetic regression test for the `start_track_()` initial-application path
 specifically, per PR #580 review M-6).
 
+### Issue #587: pack the 2A03 noise period-table index instead of discarding it
+
+`Nes_Apu::get_osc_state()`'s noise case (`index == 3`) previously always set
+`out->period = 0` with the comment "not pitched in the musical sense; keycode
+stays invalid". nt-chiptune-player (ADR 0072) now maps this channel's period
+register to a keyboard position for visualization purposes (not a claim that
+it is a musical pitch), which needs the raw 4-bit noise period-table index
+(`regs[2] & 15`, values 0-15) to do the mapping. Changed `period` to carry
+that index instead of the constant 0 -- ADR 0023 classification 1
+(observation-only addition; `run_until()` and all other emulation behavior
+are unchanged, the field is read-only and post-render). Updated the `period`
+field doc comment in `gme.h` to note this per-voice meaning change (0 is now
+a valid index for this voice, not "silent").
+
+Files touched: `gme/Nes_Apu.cpp`, `gme/gme.h`. No ABI change (field width/
+offset unchanged). `grep -rn "\.period" core/src core/tests` in the
+superproject confirms no other consumer treats this voice's `period == 0` as
+"invalid" after the nsf_engine.cpp change made in the same PR.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork
