@@ -263,7 +263,11 @@ typedef struct gme_nsf_channel_state_t
 	                              voice (chip_id=0, noise_on=1) this instead carries the 4-bit noise
 	                              period-table index (regs[2] & 15, 0-15) -- 0 is a valid index here,
 	                              not "silent"; the caller maps it to a keyboard position for
-	                              visualization rather than treating it as a musical pitch. */
+	                              visualization rather than treating it as a musical pitch.
+	                              nt-chiptune-player fork addition (Issue #651): for the 2A03 DMC
+	                              voice (chip_id=0, chan index 4) this instead carries the 4-bit
+	                              $4010 rate-index (regs[0] & 0x0F, 0-15) -- same "index, not a
+	                              musical pitch" convention as the noise voice above. */
 	unsigned char reserved1;   /* ABI parity with gme_hes_channel_state_t (was noise_freq); always 0, reserved */
 	short gain_l;              /* proxy amplitude (last synthesized output delta accumulator) */
 	short gain_r;              /* same as gain_l -- NES/expansion voices in this fork are mono-routed internally */

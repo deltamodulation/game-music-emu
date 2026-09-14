@@ -357,7 +357,11 @@ void Nes_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
 	case 4: // dmc
 		out->enabled = (unsigned char) (dmc.length_counter > 0 || dmc.buf_full);
 		out->channel_vol = (unsigned char) (dmc.dac >> 3); // 7-bit DAC -> 0-15
-		out->period = 0; // playback rate, not a musical pitch
+		// nt-chiptune-player fork addition (Issue #651): not a musical pitch, but
+		// the caller (core/ nsf_engine) maps this $4010 rate-index (4-bit, 0-15)
+		// to a keyboard position for visualization, same convention as the noise
+		// voice above (Issue #587).
+		out->period = (unsigned short) (dmc.regs[0] & 0x0F);
 		break;
 	}
 	out->gain_l = out->gain_r = (short) osc.last_amp;

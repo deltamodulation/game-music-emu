@@ -661,6 +661,23 @@ offset unchanged). `grep -rn "\.period" core/src core/tests` in the
 superproject confirms no other consumer treats this voice's `period == 0` as
 "invalid" after the nsf_engine.cpp change made in the same PR.
 
+### Issue #651: pack the 2A03 DMC $4010 rate-index instead of discarding it
+
+`Nes_Apu::get_osc_state()`'s dmc case (`index == 4`) previously always set
+`out->period = 0` with the comment "playback rate, not a musical pitch".
+nt-chiptune-player (ADR 0076) now maps this channel's `$4010` rate register to
+a keyboard position for visualization purposes (not a claim that it is a
+musical pitch), which needs the raw 4-bit rate index (`regs[0] & 0x0F`, values
+0-15) to do the mapping -- same convention as the Issue #587 noise-voice
+change above. Changed `period` to carry that index instead of the constant 0
+-- ADR 0023 classification 1 (observation-only addition; `run_until()` and
+all other emulation behavior are unchanged, the field is read-only and
+post-render). Updated the `period` field doc comment in `gme.h` to note this
+per-voice meaning.
+
+Files touched: `gme/Nes_Apu.cpp`, `gme/gme.h`. No ABI change (field width/
+offset unchanged).
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork
