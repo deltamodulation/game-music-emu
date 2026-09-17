@@ -678,6 +678,47 @@ per-voice meaning.
 Files touched: `gme/Nes_Apu.cpp`, `gme/gme.h`. No ABI change (field width/
 offset unchanged).
 
+### 2026-09-17 -- Add read-only `gme_spc_channel_state` C API for SPC (Issue #591)
+
+Adds a minimal, additions-only C API (`gme_spc_channel_state` /
+`gme_spc_set_observe_interval_ms` in `gme/gme.h`) for the SPC (SNES S-DSP)
+emulator, following the same design rationale as the HES/NSF additions above
+(ADR 0023 classification 1: additions only, no existing behavior changed).
+
+`gme_spc_channel_state` exposes exactly four S-DSP register fields per voice
+(`pitch`, `non`, `noise_rate`, `envx` -- see ADR 0075 裁定 7 for why only
+these four): `Spc_Dsp::read()` was already `public`, but `Snes_Spc::dsp` and
+`Spc_Emu::apu` are both `private`, so a new accessor was needed at each layer
+to reach it from outside:
+- `gme/Snes_Spc.h`: added `int dsp_read( int addr ) const { return dsp.read( addr ); }`.
+- `gme/Spc_Emu.h` / `gme/Spc_Emu.cpp`: added `Spc_Emu::channel_state()`,
+  which decodes the pitch/non/noise_rate/envx fields from the raw register
+  values and is the only caller of the new `dsp_read()`.
+
+`gme_spc_set_observe_interval_ms` mirrors `gme_hes_set_observe_interval_ms` /
+`gme_nsf_set_observe_interval_ms`'s contract (opt-in, valid range 1..1000 ms,
+call after load and before start_track) but not their mechanism: `Spc_Emu` is
+not a `Classic_Emu` subclass, so `Classic_Emu::set_buffer_length_ms`
+(Blip_Buffer resize) does not apply. Instead, `Spc_Emu::set_observe_interval_ms()`
+resizes the `Fir_Resampler<24> resampler` member that `Spc_Emu::set_sample_rate_()`
+already allocates at a fixed 50ms (`native_sample_rate / 20 * 2`) -- the same
+buffer whose size bounds how often `play_()` re-enters the emulation core when
+resampling is active. When the output rate equals `native_sample_rate`
+(32000 Hz) the resampler is bypassed entirely (`play_()` takes the
+`sample_rate() == native_sample_rate` branch straight into `play_and_filter`),
+so the call is then a harmless no-op and the caller's own `gme_play()` chunk
+size determines the effective granularity.
+
+Both new C API entry points do their own `me->type() != Spc_Emu::static_type()`
+check (RTTI is disabled in this build) and `gme_spc_channel_state` range-checks
+`index` against `Snes_Spc::voice_count` (8) before it reaches
+`Spc_Emu::channel_state()` -- same discipline as the HES/NSF entry points
+(SEC-L-1: a caller bug must not translate into an out-of-bounds `Spc_Dsp`
+register read across the C ABI boundary).
+
+Files touched: `gme/gme.h`, `gme/gme.exports`, `gme/Snes_Spc.h`,
+`gme/Spc_Emu.h`, `gme/Spc_Emu.cpp`.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

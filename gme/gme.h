@@ -3,6 +3,7 @@
 /* Modified 2026-08-17, 2026-08-19 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 /* Modified 2026-09-04 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 /* Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
+/* Modified 2026-09-17 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 
 /* Game_Music_Emu 0.6.6 */
 #ifndef GME_H
@@ -286,6 +287,50 @@ contract as gme_hes_set_observe_interval_ms above (valid range 1..1000 ms,
 call AFTER load and BEFORE gme_start_track, opt-in / upstream default
 unchanged if not called). */
 BLARGG_EXPORT gme_err_t gme_nsf_set_observe_interval_ms( Music_Emu*, int msec );
+
+/* nt-chiptune-player fork addition (Issue #591; same rationale/ADR 0023 as
+gme_hes_channel_state above): read-only per-channel state snapshot for the SPC
+(SNES S-DSP) emulator. Unlike the HES/NSF structs, this exposes only the four
+S-DSP register fields that nt-chiptune-player's visualizer actually derives a
+keycode/envelope from (ADR 0075 裁定 7) -- srcn/adsr/gain/outx are deliberately
+left out; the struct can grow append-only later if a use for them appears. */
+/* Struct layout is frozen for ABI compatibility with the nt-chiptune-player
+JNI bridge -- append new fields at the end only; never reorder, resize, or
+remove existing fields. */
+typedef struct gme_spc_channel_state_t
+{
+	unsigned short pitch;      /* 14-bit S-DSP pitch register (v_pitchh:v_pitchl), sample playback rate; 0 = no meaningful pitch */
+	unsigned char  non;        /* non-zero if this voice's bit is set in the S-DSP NON (noise enable) register */
+	unsigned char  noise_rate; /* 5-bit S-DSP noise rate (FLG register bits 4-0), 0-31; shared by all voices */
+	unsigned char  envx;       /* 7-bit S-DSP per-voice envelope value (ENVX), 0 = silent */
+} gme_spc_channel_state_t;
+
+/* Fill *out with channel `index`'s current state (0 <= index < gme_voice_count(),
+always 8 for SPC). Returns NULL on success. Returns an error string if `me` is
+not an SPC emulator or `index` is out of range; *out is left unmodified in
+that case.
+Not thread-safe: call only from the same thread as gme_play(), and only
+between gme_play() calls (not concurrently with one). */
+BLARGG_EXPORT gme_err_t gme_spc_channel_state( Music_Emu const*, int index, gme_spc_channel_state_t* out );
+
+/* nt-chiptune-player fork addition (Issue #591 / ADR 0075 裁定 7): set the
+internal emulation-batch length, in milliseconds, of an SPC emulator. Unlike
+gme_hes_set_observe_interval_ms / gme_nsf_set_observe_interval_ms (which resize
+a Classic_Emu Blip_Buffer), this resizes Spc_Emu's internal Fir_Resampler input
+buffer -- Spc_Emu is not a Classic_Emu subclass. When the output sample rate
+equals the SPC native rate (32000 Hz) the resampler is bypassed entirely and
+this call is a harmless no-op; the actual observation granularity is then the
+caller's gme_play() chunk size instead. Valid range is 1..1000 ms; an error
+string is returned outside that range or if `me` is not an SPC emulator.
+
+Call AFTER loading a file and BEFORE gme_start_track (it clears the resampler
+buffer, so calling it mid-playback would drop already-synthesized samples).
+Not calling it at all leaves the upstream default (50 ms) untouched -- this
+API is strictly opt-in and changes nothing for callers that ignore it.
+
+Not thread-safe: call only from the same thread as gme_play(), and not
+concurrently with one. */
+BLARGG_EXPORT gme_err_t gme_spc_set_observe_interval_ms( Music_Emu*, int msec );
 
 /* Disable/Enable echo effect for SPC files */
 /* Available since 0.6.4 */

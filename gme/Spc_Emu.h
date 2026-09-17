@@ -1,6 +1,7 @@
 // Super Nintendo SPC music file emulator
 
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-09-17 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef SPC_EMU_H
 #define SPC_EMU_H
 
@@ -8,6 +9,7 @@
 #include "Music_Emu.h"
 #include "Snes_Spc.h"
 #include "Spc_Filter.h"
+#include "gme.h" // nt-chiptune-player fork addition: gme_spc_channel_state_t
 
 class Spc_Emu : public Music_Emu {
 public:
@@ -45,6 +47,14 @@ public:
 	void disable_surround( bool disable = true );
 
 	static gme_type_t static_type() { return gme_spc_type; }
+
+	// nt-chiptune-player fork addition (Issue #591): read-only per-channel
+	// state snapshot (see gme_spc_channel_state in gme.h).
+	void channel_state( int i, gme_spc_channel_state_t* out ) const;
+
+	// nt-chiptune-player fork addition (Issue #591): opt-in observation
+	// granularity (see gme_spc_set_observe_interval_ms in gme.h).
+	blargg_err_t set_observe_interval_ms( int msec );
 
 public:
 	// deprecated

@@ -1,4 +1,5 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-09-17 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Spc_Emu.h"
 
@@ -372,4 +373,72 @@ blargg_err_t Spc_Emu::play_( long count, sample_t* out )
 	}
 	check( remain == 0 );
 	return 0;
+}
+
+// nt-chiptune-player fork addition (Issue #591 / ADR 0075 裁定 7): read-only
+// per-channel state, delegated to the S-DSP register file via
+// Snes_Spc::dsp_read (which is otherwise unreachable -- apu is private here
+// and dsp is private in Snes_Spc). pitch/envx are per-voice registers at
+// (i<<4)|reg; non/noise_rate are global registers gated/shared across voices.
+void Spc_Emu::channel_state( int i, gme_spc_channel_state_t* out ) const
+{
+	int const base    = i << 4;
+	int const pitchl  = apu.dsp_read( base | Spc_Dsp::v_pitchl );
+	int const pitchh  = apu.dsp_read( base | Spc_Dsp::v_pitchh );
+	out->pitch        = (unsigned short) (((pitchh << 8) | pitchl) & 0x3FFF);
+	out->non          = (unsigned char) ((apu.dsp_read( Spc_Dsp::r_non ) >> i) & 1);
+	out->noise_rate   = (unsigned char) (apu.dsp_read( Spc_Dsp::r_flg ) & 0x1F);
+	out->envx         = (unsigned char) apu.dsp_read( base | Spc_Dsp::v_envx );
+}
+
+// nt-chiptune-player fork addition (Issue #591 / ADR 0075 裁定 7): opt-in
+// observation granularity. Spc_Emu is not a Classic_Emu subclass, so the
+// Blip_Buffer-based mechanism gme_hes_set_observe_interval_ms /
+// gme_nsf_set_observe_interval_ms delegate to (Classic_Emu::set_buffer_length_ms)
+// does not apply here. What bounds the observable granularity for SPC is the
+// Fir_Resampler input buffer resized in set_sample_rate_() above (native_sample_rate
+// / 20 * 2, i.e. 50ms of stereo input samples) -- resize it to the requested
+// interval instead. When the output rate equals native_sample_rate the resampler
+// is never used (play_ above takes the `sample_rate() == native_sample_rate`
+// branch directly into play_and_filter), so this call is a harmless no-op in
+// that case.
+blargg_err_t Spc_Emu::set_observe_interval_ms( int msec )
+{
+	if ( msec < 1 || msec > 1000 )
+		return "Invalid observe interval";
+	long const size = (long) ((long long) native_sample_rate * msec / 1000) * 2;
+	RETURN_ERR( resampler.buffer_size( (int) size ) );
+	return 0;
+}
+
+// nt-chiptune-player fork addition (LGPL-2.1 modification): C API for
+// gme_spc_channel_state (declared in gme.h). This file is only compiled when
+// USE_GME_SPC is enabled (see gme/CMakeLists.txt), so no #ifdef guard is
+// needed here. Voice index range check mirrors gme_hes_channel_state /
+// gme_nsf_channel_state (SEC-L-1: caller bugs must not reach an
+// out-of-bounds Spc_Dsp register read).
+extern "C" BLARGG_EXPORT gme_err_t gme_spc_channel_state( Music_Emu const* me, int index, gme_spc_channel_state_t* out )
+{
+	if ( !me || !out )
+		return "NULL parameter";
+	if ( me->type() != Spc_Emu::static_type() )
+		return "Not an SPC emulator";
+	if ( (unsigned) index >= (unsigned) Snes_Spc::voice_count )
+		return "Voice index out of range";
+	static_cast<Spc_Emu const*>( me )->channel_state( index, out );
+	return 0;
+}
+
+// nt-chiptune-player fork addition (Issue #591): C API for
+// gme_spc_set_observe_interval_ms (declared in gme.h). The type check goes
+// through gme_type_t, because libgme is built with RTTI disabled and an
+// RTTI-based cast would therefore not link. The msec range check lives in
+// Spc_Emu::set_observe_interval_ms above.
+extern "C" BLARGG_EXPORT gme_err_t gme_spc_set_observe_interval_ms( Music_Emu* me, int msec )
+{
+	if ( !me )
+		return "NULL parameter";
+	if ( me->type() != Spc_Emu::static_type() )
+		return "Not an SPC emulator";
+	return static_cast<Spc_Emu*>( me )->set_observe_interval_ms( msec );
 }

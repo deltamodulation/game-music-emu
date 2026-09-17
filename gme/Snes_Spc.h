@@ -1,6 +1,7 @@
 // SNES SPC-700 APU emulator
 
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-09-17 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef SNES_SPC_H
 #define SNES_SPC_H
 
@@ -58,6 +59,12 @@ public:
 	// Reduces emulation accuracy.
 	enum { voice_count = 8 };
 	void mute_voices( int mask );
+
+	// nt-chiptune-player fork addition (Issue #591): read-only S-DSP register
+	// access, used by gme_spc_channel_state (see gme.h / Spc_Emu::channel_state).
+	// dsp is otherwise private; this is the only way to reach Spc_Dsp::read()
+	// (already public) from outside Snes_Spc.
+	int dsp_read( int addr ) const { return dsp.read( addr ); }
 
 	// If true, prevents channels and global volumes from being phase-negated.
 	// Only supported by fast DSP.
