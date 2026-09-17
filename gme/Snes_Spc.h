@@ -63,8 +63,16 @@ public:
 	// nt-chiptune-player fork addition (Issue #591): read-only S-DSP register
 	// access, used by gme_spc_channel_state (see gme.h / Spc_Emu::channel_state).
 	// dsp is otherwise private; this is the only way to reach Spc_Dsp::read()
-	// (already public) from outside Snes_Spc.
-	int dsp_read( int addr ) const { return dsp.read( addr ); }
+	// (already public) from outside Snes_Spc. Named read_dsp_reg (not dsp_read)
+	// to avoid colliding with the existing private `int dsp_read( rel_time_t )`
+	// member declared further down in this class (an unrelated CPU-time-scheduled
+	// $F2/$F3 port read) -- the two are overload-distinct by parameter type but
+	// the name collision invites confusion at call sites. Range-checks addr
+	// itself (rather than trusting callers) so a future second caller inside the
+	// fork cannot turn a bug into an out-of-bounds Spc_Dsp register read.
+	int read_dsp_reg( int addr ) const {
+		return (unsigned) addr < (unsigned) Spc_Dsp::register_count ? dsp.read( addr ) : 0;
+	}
 
 	// If true, prevents channels and global volumes from being phase-negated.
 	// Only supported by fast DSP.

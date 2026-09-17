@@ -719,6 +719,28 @@ register read across the C ABI boundary).
 Files touched: `gme/gme.h`, `gme/gme.exports`, `gme/Snes_Spc.h`,
 `gme/Spc_Emu.h`, `gme/Spc_Emu.cpp`.
 
+### 2026-09-18 -- Rename `Snes_Spc::dsp_read` and add defense-in-depth range checks (PR #721 review, nt-chiptune-player#591)
+
+Follow-up to the 2026-09-17 addition above, same Issue/PR. Two changes, both
+additions-only / no behavior change to any existing code path (ADR 0023
+classification 1):
+
+- Renamed the new accessor from `dsp_read( int addr )` to `read_dsp_reg( int addr )`.
+  `Snes_Spc` already declares a private `int dsp_read( rel_time_t )` (an
+  unrelated CPU-time-scheduled $F2/$F3 port read, part of the pre-existing
+  implementation). The two are overload-distinct by parameter type, so this
+  was not a compile error, but the name collision invited confusion at call
+  sites -- caught in nt-chiptune-player PR #721 code review.
+- `read_dsp_reg` now range-checks `addr` itself (`(unsigned) addr <
+  (unsigned) Spc_Dsp::register_count`) instead of trusting the caller, and
+  `Spc_Emu::channel_state()` now also range-checks its own `i` parameter and
+  zero-fills `*out` on an out-of-range index. `gme_spc_channel_state`
+  (the C API) already range-checked `index` before this change, so no
+  previously-reachable behavior changes; this is defense-in-depth for any
+  future second caller added inside this fork (PR #721 review SEC-L-1/SEC-L-2).
+
+Files touched: `gme/Snes_Spc.h`, `gme/Spc_Emu.cpp`.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

@@ -377,18 +377,28 @@ blargg_err_t Spc_Emu::play_( long count, sample_t* out )
 
 // nt-chiptune-player fork addition (Issue #591 / ADR 0075 裁定 7): read-only
 // per-channel state, delegated to the S-DSP register file via
-// Snes_Spc::dsp_read (which is otherwise unreachable -- apu is private here
+// Snes_Spc::read_dsp_reg (which is otherwise unreachable -- apu is private here
 // and dsp is private in Snes_Spc). pitch/envx are per-voice registers at
 // (i<<4)|reg; non/noise_rate are global registers gated/shared across voices.
 void Spc_Emu::channel_state( int i, gme_spc_channel_state_t* out ) const
 {
+	// SEC-L-2 (PR #721 review): range-check i here too, not only at the
+	// gme_spc_channel_state C API boundary -- read_dsp_reg's own bounds check
+	// (SEC-L-1) already prevents an out-of-bounds Spc_Dsp read even without
+	// this, but zeroing *out on a bad index is a clearer contract for any
+	// future second caller inside this fork.
+	if ( (unsigned) i >= (unsigned) Snes_Spc::voice_count )
+	{
+		*out = gme_spc_channel_state_t();
+		return;
+	}
 	int const base    = i << 4;
-	int const pitchl  = apu.dsp_read( base | Spc_Dsp::v_pitchl );
-	int const pitchh  = apu.dsp_read( base | Spc_Dsp::v_pitchh );
+	int const pitchl  = apu.read_dsp_reg( base | Spc_Dsp::v_pitchl );
+	int const pitchh  = apu.read_dsp_reg( base | Spc_Dsp::v_pitchh );
 	out->pitch        = (unsigned short) (((pitchh << 8) | pitchl) & 0x3FFF);
-	out->non          = (unsigned char) ((apu.dsp_read( Spc_Dsp::r_non ) >> i) & 1);
-	out->noise_rate   = (unsigned char) (apu.dsp_read( Spc_Dsp::r_flg ) & 0x1F);
-	out->envx         = (unsigned char) apu.dsp_read( base | Spc_Dsp::v_envx );
+	out->non          = (unsigned char) ((apu.read_dsp_reg( Spc_Dsp::r_non ) >> i) & 1);
+	out->noise_rate   = (unsigned char) (apu.read_dsp_reg( Spc_Dsp::r_flg ) & 0x1F);
+	out->envx         = (unsigned char) apu.read_dsp_reg( base | Spc_Dsp::v_envx );
 }
 
 // nt-chiptune-player fork addition (Issue #591 / ADR 0075 裁定 7): opt-in
