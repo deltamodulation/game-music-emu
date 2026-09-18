@@ -1,4 +1,5 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-09-18 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Gbs_Emu.h"
 

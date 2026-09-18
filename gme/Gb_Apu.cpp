@@ -1,4 +1,5 @@
 // Gb_Snd_Emu 0.1.5. http://www.slack.net/~ant/
+// Modified 2026-09-18 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Gb_Apu.h"
 
@@ -193,7 +194,12 @@ void Gb_Apu::run_until( blip_time_t end_time )
 
 // nt-chiptune-player fork addition (Issue #599): read-only snapshot of
 // oscillator `index`'s raw state (see gme_gbs_channel_state in gme.h and the
-// declaration comment in Gb_Apu.h). The base gate mirrors run_until()'s
+// declaration comment in Gb_Apu.h). NOTE: this function unconditionally
+// zero-fills *out below; gme.h's "*out is left unmodified" error contract
+// holds only because the C wrapper (gme_gbs_channel_state) range-checks
+// `index` and returns before reaching this call -- a future caller that
+// invokes get_osc_state() directly on an out-of-range index would see *out
+// zeroed rather than untouched. The base gate mirrors run_until()'s
 // `playing` computation above; index 0 (Square 1) additionally silences on
 // sweep overflow and indices 0/1 (both squares) and 2 (Wave) additionally
 // silence when frequency() falls outside the range Gb_Square::run() /
