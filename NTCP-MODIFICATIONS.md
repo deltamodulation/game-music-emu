@@ -782,6 +782,25 @@ read across the C ABI boundary).
 Files touched: `gme/gme.h`, `gme/gme.exports`, `gme/Gb_Apu.h`,
 `gme/Gb_Apu.cpp`, `gme/Gbs_Emu.h`, `gme/Gbs_Emu.cpp`.
 
+### 2026-09-18 -- Add missing per-file LGPL-2.1 2(a) notices to `Gb_Apu.cpp` / `Gbs_Emu.cpp` (nt-chiptune-player PR #738 review)
+
+The GBS addition above (2026-09-18 entry) added the dated notice comment
+(`Modified 2026-09-18 by nt-chiptune-player project -- see
+NTCP-MODIFICATIONS.md`) to `gme/Gb_Apu.h` and `gme/Gbs_Emu.h`, but missed the
+two `.cpp` files that actually carry the new code (`gme/Gb_Apu.cpp`,
+`gme/Gbs_Emu.cpp`). This commit adds the same notice line to both, matching
+the existing convention used by the HES/NSF/SPC additions.
+
+Also clarifies a comment in `Gb_Apu::get_osc_state()`: the function
+unconditionally zero-fills `*out` before any error check, so `gme.h`'s "*out
+is left unmodified" error contract for `gme_gbs_channel_state` holds only
+because the C wrapper range-checks `index` and returns before reaching this
+function -- a note added to make that dependency explicit for future callers.
+
+No behavior change; comment/notice-only.
+
+Files touched: `gme/Gb_Apu.cpp`, `gme/Gbs_Emu.cpp`.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork
