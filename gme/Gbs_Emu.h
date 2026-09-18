@@ -1,6 +1,7 @@
 // Nintendo Game Boy GBS music file emulator
 
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-09-18 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef GBS_EMU_H
 #define GBS_EMU_H
 
@@ -38,6 +39,19 @@ public:
 	header_t const& header() const { return header_; }
 
 	static gme_type_t static_type() { return gme_gbs_type; }
+
+	// nt-chiptune-player fork addition (Issue #599): read-only per-channel
+	// state snapshot, dispatched straight to the (sole) Gb_Apu (see
+	// gme_gbs_channel_state in gme.h). Index ordering matches set_voice()/
+	// gme_voice_count() exactly (Square 1, Square 2, Wave, Noise).
+	void channel_state( int i, gme_gbs_channel_state_t* out ) const { apu.get_osc_state( i, out ); }
+
+	// nt-chiptune-player fork addition (Issue #599): opt-in observation
+	// granularity, delegated to the Classic_Emu base (see
+	// gme_gbs_set_observe_interval_ms in gme.h). Gbs_Emu is a Classic_Emu
+	// subclass, so this re-exports the existing protected member -- no new
+	// code is added to Classic_Emu itself (ADR 0060 裁定 2 制約 3).
+	blargg_err_t set_observe_interval_ms( int msec ) { return set_buffer_length_ms( msec ); }
 
 public:
 	// deprecated

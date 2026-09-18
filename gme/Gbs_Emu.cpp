@@ -291,3 +291,34 @@ blargg_err_t Gbs_Emu::run_clocks( blip_time_t& duration, int )
 
 	return 0;
 }
+
+// nt-chiptune-player fork addition (LGPL-2.1 modification, Issue #599): C API
+// for gme_gbs_channel_state (declared in gme.h). This file is only compiled
+// when USE_GME_GBS is enabled (see gme/CMakeLists.txt), so no #ifdef guard is
+// needed here.
+extern "C" BLARGG_EXPORT gme_err_t gme_gbs_channel_state( Music_Emu const* me, int index, gme_gbs_channel_state_t* out )
+{
+	if ( !me || !out )
+		return "NULL parameter";
+	if ( me->type() != Gbs_Emu::static_type() )
+		return "Not a GBS emulator";
+	Gbs_Emu const* gbs = static_cast<Gbs_Emu const*>( me );
+	if ( (unsigned) index >= (unsigned) gbs->voice_count() )
+		return "Voice index out of range";
+	gbs->channel_state( index, out );
+	return 0;
+}
+
+// nt-chiptune-player fork addition (Issue #599): C API for
+// gme_gbs_set_observe_interval_ms (declared in gme.h). Same rationale/contract
+// as gme_hes_set_observe_interval_ms / gme_nsf_set_observe_interval_ms -- the
+// type check goes through gme_type_t because libgme is built with RTTI
+// disabled.
+extern "C" BLARGG_EXPORT gme_err_t gme_gbs_set_observe_interval_ms( Music_Emu* me, int msec )
+{
+	if ( !me )
+		return "NULL parameter";
+	if ( me->type() != Gbs_Emu::static_type() )
+		return "Not a GBS emulator";
+	return static_cast<Gbs_Emu*>( me )->set_observe_interval_ms( msec );
+}

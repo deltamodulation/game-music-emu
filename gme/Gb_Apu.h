@@ -1,10 +1,12 @@
 // Nintendo Game Boy PAPU sound chip emulator
 
 // Gb_Snd_Emu 0.1.5
+// Modified 2026-09-18 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef GB_APU_H
 #define GB_APU_H
 
 #include "Gb_Oscs.h"
+#include "gme.h" // nt-chiptune-player fork addition: gme_gbs_channel_state_t
 
 class Gb_Apu {
 public:
@@ -29,6 +31,16 @@ public:
 	static const int osc_count = 4;
 	void osc_output( int index, Blip_Buffer* mono );
 	void osc_output( int index, Blip_Buffer* center, Blip_Buffer* left, Blip_Buffer* right );
+
+	// nt-chiptune-player fork addition (Issue #599): read-only snapshot of
+	// oscillator `index`'s current raw state, for visualization (see
+	// gme_gbs_channel_state in gme.h). `keyon` is recomputed directly from
+	// registers (same gate Gb_Apu::run_until uses, plus the Square 1 sweep
+	// silence and the Square/Wave out-of-range DC conditions Gb_Square::run /
+	// Gb_Wave::run apply), so it stays correct even while gme_mute_voice()
+	// has set this oscillator's output to NULL and run_until() has stopped
+	// evaluating it.
+	void get_osc_state( int index, gme_gbs_channel_state_t* out ) const;
 
 	// Reset oscillators and internal state
 	void reset();

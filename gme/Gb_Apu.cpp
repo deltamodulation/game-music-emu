@@ -191,6 +191,53 @@ void Gb_Apu::run_until( blip_time_t end_time )
 	}
 }
 
+// nt-chiptune-player fork addition (Issue #599): read-only snapshot of
+// oscillator `index`'s raw state (see gme_gbs_channel_state in gme.h and the
+// declaration comment in Gb_Apu.h). The base gate mirrors run_until()'s
+// `playing` computation above; index 0 (Square 1) additionally silences on
+// sweep overflow and indices 0/1 (both squares) and 2 (Wave) additionally
+// silence when frequency() falls outside the range Gb_Square::run() /
+// Gb_Wave::run() treat as in-range -- both conditions run_until() only
+// applies later, inside the per-oscillator run() call, so they must be
+// duplicated here to match what would actually be audible.
+void Gb_Apu::get_osc_state( int index, gme_gbs_channel_state_t* out ) const
+{
+	require( (unsigned) index < osc_count );
+	memset( out, 0, sizeof *out );
+
+	Gb_Osc const& osc = *oscs [index];
+	bool keyon = osc.enabled != 0 && osc.volume != 0 &&
+			(!(osc.regs [4] & osc.len_enabled_mask) || osc.length != 0);
+	int freq = osc.frequency();
+
+	switch ( index )
+	{
+	case 0: // Square 1
+		if ( square1.sweep_freq == 2048 || (unsigned) (freq - 1) > 2040 )
+			keyon = false;
+		out->volume = (unsigned char) osc.volume;
+		out->period = (unsigned short) freq;
+		break;
+	case 1: // Square 2
+		if ( (unsigned) (freq - 1) > 2040 )
+			keyon = false;
+		out->volume = (unsigned char) osc.volume;
+		out->period = (unsigned short) freq;
+		break;
+	case 2: // Wave
+		if ( (unsigned) (freq - 1) > 2044 )
+			keyon = false;
+		out->volume = (unsigned char) osc.volume; // 0-3 output-level code, not linear
+		out->period = (unsigned short) freq;
+		break;
+	case 3: // Noise
+		out->volume = (unsigned char) osc.volume; // 0-15 envelope
+		out->period = (unsigned short) osc.regs [3]; // raw NR43 byte (divisor|shift)
+		break;
+	}
+	out->keyon = (unsigned char) keyon;
+}
+
 void Gb_Apu::end_frame( blip_time_t end_time )
 {
 	if ( end_time > last_time )

@@ -741,6 +741,47 @@ classification 1):
 
 Files touched: `gme/Snes_Spc.h`, `gme/Spc_Emu.cpp`.
 
+### 2026-09-18 -- Add read-only `gme_gbs_channel_state` C API for GBS (Issue #599)
+
+Adds a minimal, additions-only C API (`gme_gbs_channel_state` /
+`gme_gbs_set_observe_interval_ms` in `gme/gme.h`) for the GBS (Game Boy
+`Gb_Apu`) emulator, following the same design rationale as the SPC addition
+above (ADR 0023 classification 1: additions only, no existing behavior
+changed; ADR 0081 裁定 7).
+
+`gme_gbs_channel_state` exposes three fields per voice (`keyon`, `volume`,
+`period` -- see ADR 0081 裁定 5/6/7 for why only these three; duty, sweep,
+wave RAM and the NR50/NR51 pan bits are deliberately left out). `keyon` is
+not a single raw register bit: `Gb_Apu::get_osc_state()` (new, `gme/Gb_Apu.h`
+/ `gme/Gb_Apu.cpp`) recomputes the full "would this voice currently be
+audible" condition directly from the oscillator's registers -- the same gate
+`Gb_Apu::run_until()` uses, plus the Square 1 sweep-overflow silence and the
+Square/Wave out-of-range-frequency DC conditions that `Gb_Square::run()` /
+`Gb_Wave::run()` apply -- because `run_until()` only evaluates any of this
+when `osc.output` is non-NULL, so a muted voice (`gme_mute_voice()`) would
+otherwise read as permanently silent regardless of its actual register state
+(ADR 0081 裁定 5, ADR 0071 mute-row keyboard display). `Gbs_Emu::channel_state()`
+(new, `gme/Gbs_Emu.h`) dispatches straight through to `apu.get_osc_state()`
+since GBS has exactly one chip.
+
+`gme_gbs_set_observe_interval_ms` mirrors `gme_hes_set_observe_interval_ms` /
+`gme_nsf_set_observe_interval_ms`'s contract and mechanism exactly: `Gbs_Emu`
+is a `Classic_Emu` subclass, so `Gbs_Emu::set_observe_interval_ms()` (new,
+`gme/Gbs_Emu.h`) is a one-line re-export of the existing protected
+`Classic_Emu::set_buffer_length_ms()` -- no code is added to `Classic_Emu`
+itself (ADR 0060 裁定 2 制約 3, ADR 0081 裁定 7).
+
+Both new C API entry points do their own `me->type() != Gbs_Emu::static_type()`
+check (RTTI is disabled in this build) and `gme_gbs_channel_state`
+range-checks `index` against `gme_voice_count()` (4) before it reaches
+`Gbs_Emu::channel_state()` / `Gb_Apu::get_osc_state()` (which also asserts
+the range via `require()`) -- same discipline as the HES/NSF/SPC entry
+points (a caller bug must not translate into an out-of-bounds `Gb_Apu::oscs`
+read across the C ABI boundary).
+
+Files touched: `gme/gme.h`, `gme/gme.exports`, `gme/Gb_Apu.h`,
+`gme/Gb_Apu.cpp`, `gme/Gbs_Emu.h`, `gme/Gbs_Emu.cpp`.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

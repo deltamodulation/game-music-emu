@@ -4,6 +4,7 @@
 /* Modified 2026-09-04 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 /* Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 /* Modified 2026-09-17 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
+/* Modified 2026-09-18 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 
 /* Game_Music_Emu 0.6.6 */
 #ifndef GME_H
@@ -331,6 +332,49 @@ API is strictly opt-in and changes nothing for callers that ignore it.
 Not thread-safe: call only from the same thread as gme_play(), and not
 concurrently with one. */
 BLARGG_EXPORT gme_err_t gme_spc_set_observe_interval_ms( Music_Emu*, int msec );
+
+/* nt-chiptune-player fork addition (Issue #599; same rationale/ADR 0023 as
+gme_hes_channel_state above): read-only per-channel state snapshot for the GBS
+(Game Boy Gb_Apu) emulator. Like the SPC struct (and unlike the HES/NSF 9-field
+shape), this exposes only the values nt-chiptune-player's visualizer actually
+derives a keycode/envelope from (ADR 0081 裁定 7) -- duty, sweep, wave RAM and
+the NR50/NR51 pan bits are deliberately left out; the struct can grow
+append-only later if a use for them appears. `keyon` is not a raw register bit:
+it is the fully-resolved "would this voice currently be audible" condition
+(same gate Gb_Apu::run_until uses, plus the Square 1 sweep-silence and
+Square/Wave out-of-range-frequency DC conditions Gb_Square::run / Gb_Wave::run
+apply), recomputed from registers so it is correct even while
+gme_mute_voice() has silenced the voice. */
+/* Struct layout is frozen for ABI compatibility with the nt-chiptune-player
+JNI bridge -- append new fields at the end only; never reorder, resize, or
+remove existing fields. */
+typedef struct gme_gbs_channel_state_t
+{
+	unsigned char  keyon;  /* non-zero if this voice is currently audible (see rationale above) */
+	unsigned char  volume; /* raw volume/envelope register value. Voices 0-1 (Square 1/2) and 3 (Noise): 0-15 envelope. Voice 2 (Wave): 0-3 output-level code (0=mute,1=100%,2=50%,3=25%) -- NOT linear */
+	unsigned short period; /* raw period-related register value. Voices 0-1 (Square) and 2 (Wave): 11-bit frequency register ((NRx4 & 7) << 8 | NRx3). Voice 3 (Noise): raw NR43 byte (divisor code in bits 0-2, shift in bits 4-7) */
+} gme_gbs_channel_state_t;
+
+/* Fill *out with channel `index`'s current state (0 <= index < gme_voice_count(),
+always 4 for GBS: Square 1, Square 2, Wave, Noise). Returns NULL on success.
+Returns an error string if `me` is not a GBS emulator or `index` is out of
+range; *out is left unmodified in that case.
+Not thread-safe: call only from the same thread as gme_play(), and only
+between gme_play() calls (not concurrently with one). */
+BLARGG_EXPORT gme_err_t gme_gbs_channel_state( Music_Emu const*, int index, gme_gbs_channel_state_t* out );
+
+/* nt-chiptune-player fork addition (Issue #599 / ADR 0081 裁定 7): set the
+internal emulation-batch length, in milliseconds, of a GBS emulator. Same
+mechanism/contract as gme_hes_set_observe_interval_ms / gme_nsf_set_observe_interval_ms
+(Gbs_Emu is a Classic_Emu subclass, so this resizes the same Blip_Buffer batch
+length). Valid range is 1..1000 ms; an error string is returned outside that
+range or if `me` is not a GBS emulator. Call AFTER load and BEFORE
+gme_start_track. Not calling it at all leaves the upstream default (50 ms)
+untouched -- this API is strictly opt-in and changes nothing for callers that
+ignore it.
+Not thread-safe: call only from the same thread as gme_play(), and not
+concurrently with one. */
+BLARGG_EXPORT gme_err_t gme_gbs_set_observe_interval_ms( Music_Emu*, int msec );
 
 /* Disable/Enable echo effect for SPC files */
 /* Available since 0.6.4 */
