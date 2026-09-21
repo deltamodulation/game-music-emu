@@ -801,6 +801,39 @@ No behavior change; comment/notice-only.
 
 Files touched: `gme/Gb_Apu.cpp`, `gme/Gbs_Emu.cpp`.
 
+### 2026-09-22 -- NSF: keep muted voices running into a discarded buffer (Issue #812)
+
+Behavior change in `Nsf_Emu` (not an addition-only patch; audible output is
+unchanged). `Classic_Emu::mute_voices_()` mutes a voice by calling
+`set_voice( i, 0, 0, 0 )`, i.e. by giving the oscillator a NULL output.
+The 2A03 DMC, the VRC6 saw and the FDS oscillator return early when their
+output is NULL, *before* they advance their own state (DMC `dac` / `silence`,
+the VRC6 saw accumulator `amp`, FDS `env_gain` / `last_amp`). The values
+`gme_nsf_channel_state()` derives `enabled` / `channel_vol` from therefore
+froze while a voice was muted, so a visualizer or a silence detector reading
+them saw a different song than the audible one (nt-chiptune-player Issue #812,
+contract C-18 (1)).
+
+`Nsf_Emu` now owns a `Blip_Buffer mute_sink_`. `Nsf_Emu::set_voice()` replaces
+a NULL buffer with `&mute_sink_`, so a muted voice runs exactly as an audible
+one and its output lands in a buffer nothing reads. `run_clocks()` clears the
+sink after every chip's `end_frame()` (the expansion chips run their
+oscillators in `end_frame()`). `load_()` sizes the sink after `setup_buffer()`
+with the same sample rate and clock rate as the main buffer -- the N163
+oscillator derives its wave-step timing from its output buffer's rate
+(`resampled_time` / `resampled_duration`), so a sink at another rate would let
+a muted N163 voice drift against an audible one -- and 1000 ms, the longest
+length `set_buffer_length_ms()` accepts. The allocation error is propagated.
+
+Nothing else changes: with no voice muted the sink is never written and
+`clear_modified()` skips the `clear()`, so the audible path is unchanged
+(nt-chiptune-player's `Golden.BitExactAgainstManifest`, plus a PCM hash
+comparison of 10 s of every track 0-2 of every NSF in the local corpus, are
+identical before and after). `Classic_Emu` and the other emulators
+(HES / GBS / SPC / KSS) are untouched.
+
+Files touched: `gme/Nsf_Emu.h`, `gme/Nsf_Emu.cpp`.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

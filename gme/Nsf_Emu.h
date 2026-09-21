@@ -1,7 +1,7 @@
 // Nintendo NES/Famicom NSF music file emulator
 
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
-// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
+// Modified 2026-09-22 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef NSF_EMU_H
 #define NSF_EMU_H
 
@@ -85,6 +85,9 @@ protected:
 	nes_addr_t init_addr;
 	nes_addr_t play_addr;
 	double clock_rate_;
+	// nt-chiptune-player fork addition (Issue #812): destination for voices muted
+	// by mute_voices_(). See set_voice() in Nsf_Emu.cpp.
+	Blip_Buffer mute_sink_;
 	bool pal_only;
 
 	// timing

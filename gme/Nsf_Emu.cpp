@@ -1,5 +1,5 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
-// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
+// Modified 2026-09-22 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Nsf_Emu.h"
 
@@ -418,7 +418,17 @@ blargg_err_t Nsf_Emu::load_( Data_Reader& in )
 
 	set_tempo( tempo() );
 
-	return setup_buffer( (long) (clock_rate_ + 0.5) );
+	RETURN_ERR( setup_buffer( (long) (clock_rate_ + 0.5) ) );
+
+	// nt-chiptune-player fork addition (Issue #812): see set_voice(). Same sample rate
+	// and clock rate as the main buffer, so the oscillators that derive their timing
+	// from the output buffer's rate (Nes_Namco_Apu::run_until() uses resampled_time /
+	// resampled_duration) advance identically whether a voice is muted or not. 1000 ms
+	// is the largest length Classic_Emu::set_buffer_length_ms() accepts and run_clocks()
+	// never emulates more than the main buffer's length.
+	RETURN_ERR( mute_sink_.set_sample_rate( sample_rate(), 1000 ) );
+	mute_sink_.clock_rate( (uint32_t) (clock_rate_ + 0.5) );
+	return 0;
 }
 
 void Nsf_Emu::update_eq( blip_eq_t const& eq )
@@ -439,6 +449,15 @@ void Nsf_Emu::update_eq( blip_eq_t const& eq )
 
 void Nsf_Emu::set_voice( int i, Blip_Buffer* buf, Blip_Buffer*, Blip_Buffer* )
 {
+	// nt-chiptune-player fork addition (Issue #812): a muted voice (buf == NULL, from
+	// Classic_Emu::mute_voices_) is redirected to mute_sink_ instead of having no output.
+	// The oscillators skip advancing their internal state (VRC6 saw accumulator, FDS
+	// env_gain/last_amp, DMC dac/silence) when their output is NULL, which froze the
+	// values gme_nsf_channel_state() reports and changed visualization / silence
+	// detection whenever a voice was muted. With a real (discarded) output they run
+	// exactly as when audible; run_clocks() clears the sink every frame.
+	if ( !buf )
+		buf = &mute_sink_;
 	if ( i < Nes_Apu::osc_count )
 	{
 		apu.osc_output( i, buf );
@@ -726,6 +745,13 @@ blargg_err_t Nsf_Emu::run_clocks( blip_time_t& duration, int )
 		if ( vrc7  ) vrc7 ->end_frame( duration );
 	}
 	#endif
+
+	// nt-chiptune-player fork addition (Issue #812): drop what the muted voices wrote
+	// into mute_sink_ (nothing reads it). Must come after every end_frame() above, since
+	// the expansion chips run their oscillators there. No sink end_frame(): it is never
+	// read, so its time offset is never advanced and clear() alone resets it.
+	if ( mute_sink_.clear_modified() )
+		mute_sink_.clear();
 
 	return 0;
 }
