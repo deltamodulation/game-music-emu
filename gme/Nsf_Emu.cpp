@@ -212,13 +212,37 @@ blargg_err_t Nsf_Emu::init_sound()
 		count += Nes_Apu::osc_count;
 	}
 
+	// nt-chiptune-player#850: this table used to have exactly 16 entries, which is enough
+	// for the "at most one optional expansion chip" case real NSF hardware is limited to
+	// (Nes_Apu::osc_count(5) + the largest single expansion, Nes_Namco_Apu::osc_count(8),
+	// is 13). nt-chiptune-player's gme_open_data() accepts headers with several expansion
+	// chip_flags bits set at once (see init_sound() above), which Classic_Emu::mute_voices_()
+	// then indexes with `voice_types[i]` for i up to voice_count()-1 == count_total (can be
+	// as high as 29 when every optional chip is enabled simultaneously) -- a global-buffer-
+	// overflow read past the end of this table (caught by ASan; see nt-chiptune-player#850).
+	// The values only need to be distinct small ints (type_index_mask lets Effects_Buffer
+	// derive a stereo-pan bucket via `% 3` -- Multi_Buffer.h/Effects_Buffer.cpp), so this is
+	// a plain table-size fix: extend to count_total's maximum (29) continuing the same
+	// `wave_type | N` pattern for indices 16-28. Existing indices 0-15 are unchanged.
 	static int const types [] = {
 		wave_type  | 1, wave_type  | 2, wave_type | 0,
 		noise_type | 0, mixed_type | 1,
 		wave_type  | 3, wave_type  | 4, wave_type | 5,
 		wave_type  | 6, wave_type  | 7, wave_type | 8, wave_type | 9,
-		wave_type  |10, wave_type  |11, wave_type |12, wave_type |13
+		wave_type  |10, wave_type  |11, wave_type |12, wave_type |13,
+		wave_type  |14, wave_type  |15, wave_type |16, wave_type |17,
+		wave_type  |18, wave_type  |19, wave_type |20, wave_type |21,
+		wave_type  |22, wave_type  |23, wave_type |24, wave_type |25,
+		wave_type  |26
 	};
+	#if !NSF_EMU_APU_ONLY
+	static_assert(sizeof(types) / sizeof(types[0]) >=
+	                  Nes_Apu::osc_count + Nes_Namco_Apu::osc_count + Nes_Vrc6_Apu::osc_count +
+	                      Nes_Fme7_Apu::osc_count + Nes_Fds_Apu::osc_count +
+	                      Nes_Mmc5_Apu::osc_count + Nes_Vrc7_Apu::osc_count,
+	              "types[] must cover the worst case (all optional expansion chips enabled "
+	              "at once) -- see nt-chiptune-player#850");
+	#endif
 	set_voice_types( types ); // common to all sound chip configurations
 
 	double adjusted_gain = gain();

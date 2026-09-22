@@ -834,6 +834,38 @@ identical before and after). `Classic_Emu` and the other emulators
 
 Files touched: `gme/Nsf_Emu.h`, `gme/Nsf_Emu.cpp`.
 
+### 2026-09-22 -- NSF: fix out-of-bounds read of `init_sound()::types` with multiple expansion chips (nt-chiptune-player#850)
+
+`Nsf_Emu::init_sound()` builds a 16-entry `static int const types[]` table
+mapping voice index to a stereo-pan "type" hint, then calls
+`set_voice_types(types)`. `Classic_Emu::mute_voices_()` (reached from
+`gme_mute_voices()`, in turn reached by nt-chiptune-player's
+`ntcp_set_channel_mask()`) indexes this table with `voice_types[i]` for `i`
+up to `voice_count() - 1`, where `voice_count()` is the sum of every
+*currently enabled* chip's oscillator count -- up to 29 when every optional
+expansion chip (VRC6 + Namco163 + FME7 + FDS + MMC5 + VRC7) is enabled at
+once via `chip_flags`. Real NSF hardware only ever has one expansion chip
+installed, so the 16-entry table was never exercised past its own bounds by
+any file a real cartridge could produce, but nt-chiptune-player's
+`gme_open_data()` does not reject a header with several expansion
+`chip_flags` bits set (ADR 0094 relies on this to test the mask ABI's full
+32-channel range with a single synthetic NSF), and AddressSanitizer caught
+the resulting `global-buffer-overflow` read (nt-chiptune-player#850, ADR 0094
+"Issue #850").
+
+`types[]` is extended to 29 entries (the true worst case), continuing the
+existing `wave_type | N` pattern for indices 16-28. A `static_assert`
+(guarded by `!NSF_EMU_APU_ONLY`, since the chip osc_count constants it sums
+aren't declared in that build configuration) pins the table's length to the
+sum of every optional chip's `osc_count`, so a future osc_count change that
+outgrows the table fails to compile instead of reading out of bounds again.
+The table's existing 16 entries (indices 0-15) are unchanged, so any file
+using at most one expansion chip -- i.e. every real NSF, and
+nt-chiptune-player's `Golden.BitExactAgainstManifest` corpus -- is bit-exact
+before and after.
+
+Files touched: `gme/Nsf_Emu.cpp`.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork
