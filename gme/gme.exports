@@ -4,7 +4,10 @@
 # Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 # Modified 2026-09-17 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 # Modified 2026-09-18 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
+# Modified 2026-09-28 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 gme_autoload_playback_limit
+gme_ay_channel_state
+gme_ay_set_observe_interval_ms
 gme_clear_playlist
 gme_delete
 gme_enable_accuracy

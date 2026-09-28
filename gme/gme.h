@@ -376,6 +376,64 @@ Not thread-safe: call only from the same thread as gme_play(), and not
 concurrently with one. */
 BLARGG_EXPORT gme_err_t gme_gbs_set_observe_interval_ms( Music_Emu*, int msec );
 
+/* nt-chiptune-player fork addition (Issue #1009 / ADR 0106 裁定 7): read-only
+snapshot of channel `index`'s raw state. Unlike gme_gbs_channel_state, this
+does NOT resolve a fully-computed `keyon` -- the caller (core) recomputes
+keyon itself from the raw fields, since every input the formula needs is
+already exposed here (ADR 0106 Context: `Ay_Emu` is a thin register/CPU
+emulator with no upstream "is this voice audible" helper equivalent to
+Gb_Apu::get_osc_state). Fields cover only what ADR 0106 裁定 5/6 actually
+derive a keycode/volume/keyon from -- envelope waveform, phase and Ay_Cpu
+state are deliberately left out; the struct can grow append-only later if a
+use for them appears.
+`clock_rate` is the emulator's *current* Classic_Emu clock rate (3546900 for
+Spectrum, 2000000 once the CPC I/O-port heuristic in Ay_Emu::cpu_out_misc has
+fired -- see ADR 0106 裁定 8) and is identical across all 4 indices; it is
+exposed here because Classic_Emu::clock_rate() is protected and core has no
+other way to learn which mode is active.
+`beeper_toggle_count` is a monotonic (wrapping) count of `Ay_Emu::ay_cpu_out`
+observing the beeper I/O port ($FE bit 4) toggle to a new value since the
+current track started (reset in Ay_Emu::start_track_); it is meaningful only
+for index 3 (Beeper) and is 0 for indices 0-2. Core resolves Beeper `keyon`
+by comparing this value across two fill_snapshot() calls (ADR 0106 裁定 5) --
+a monotonic counter survives gme_mute_voice() muting the beeper output
+buffer, since Ay_Emu::ay_cpu_out still updates `last_beeper`/counts the
+toggle regardless of whether `beeper_output` is NULL. */
+/* Struct layout is frozen for ABI compatibility with the nt-chiptune-player
+JNI bridge -- append new fields at the end only; never reorder, resize, or
+remove existing fields. */
+typedef struct gme_ay_channel_state_t
+{
+	unsigned char  tone_enabled;  /* index 0-2 only: non-zero if this voice's tone is enabled in the mixer register (regs[7] bit `index`, active-low inverted here so 1 = enabled). Always 0 for index 3 */
+	unsigned char  noise_enabled; /* index 0-2 only: non-zero if this voice's noise is enabled in the mixer register (regs[7] bit `3+index`, inverted). Always 0 for index 3 */
+	unsigned char  volume_reg;    /* index 0-2 only: raw volume/envelope register value (regs[8+index]) -- bit 4 = envelope-select, bits 0-3 = fixed level (0-15). Always 0 for index 3 */
+	unsigned char  reserved0;     /* padding/reserved for future append-only growth; always 0 */
+	unsigned short tone_period;   /* index 0-2 only: raw 12-bit tone period (regs[2*index+1]&0x0F)<<8 | regs[2*index]. Always 0 for index 3 */
+	unsigned short noise_period;  /* index 0-2 only: raw 5-bit noise period shared by all 3 tone voices (regs[6]&0x1F). Always 0 for index 3 */
+	long           clock_rate;    /* all indices: emulator's current clock rate in Hz (see rationale above) */
+	unsigned int   beeper_toggle_count; /* index 3 only: monotonic beeper I/O-port toggle count since start_track (see rationale above). Always 0 for index 0-2 */
+} gme_ay_channel_state_t;
+
+/* Fill *out with channel `index`'s current state (0 <= index < gme_voice_count(),
+always 4 for AY: Wave 1, Wave 2, Wave 3, Beeper). Returns NULL on success.
+Returns an error string if `me` is not an AY emulator or `index` is out of
+range; *out is left unmodified in that case.
+Not thread-safe: call only from the same thread as gme_play(), and only
+between gme_play() calls (not concurrently with one). */
+BLARGG_EXPORT gme_err_t gme_ay_channel_state( Music_Emu const*, int index, gme_ay_channel_state_t* out );
+
+/* nt-chiptune-player fork addition (Issue #1009 / ADR 0106 裁定 7): set the
+internal emulation-batch length, in milliseconds, of an AY emulator. Same
+mechanism/contract as gme_gbs_set_observe_interval_ms above (Ay_Emu is a
+Classic_Emu subclass, so this resizes the same Blip_Buffer batch length).
+Valid range is 1..1000 ms; an error string is returned outside that range or
+if `me` is not an AY emulator. Call AFTER load and BEFORE gme_start_track.
+Not calling it at all leaves the upstream default (50 ms) untouched -- this
+API is strictly opt-in and changes nothing for callers that ignore it.
+Not thread-safe: call only from the same thread as gme_play(), and not
+concurrently with one. */
+BLARGG_EXPORT gme_err_t gme_ay_set_observe_interval_ms( Music_Emu*, int msec );
+
 /* Disable/Enable echo effect for SPC files */
 /* Available since 0.6.4 */
 BLARGG_EXPORT void gme_disable_echo( Music_Emu*, int disable );

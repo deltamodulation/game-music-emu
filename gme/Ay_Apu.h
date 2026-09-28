@@ -6,6 +6,7 @@
 
 #include "blargg_common.h"
 #include "Blip_Buffer.h"
+#include "gme.h" // nt-chiptune-player fork addition: gme_ay_channel_state_t
 
 class Ay_Apu {
 public:
@@ -36,6 +37,13 @@ public:
 
 	// Set treble equalization (see documentation)
 	void treble_eq( blip_eq_t const& );
+
+	// nt-chiptune-player fork addition (Issue #1009 / ADR 0106 裁定 7): read-only
+	// snapshot of voice `index`'s raw registers (see gme_ay_channel_state in
+	// gme.h for the field contract). `index` must be 0, 1, or 2 -- the caller
+	// (Ay_Emu::channel_state) is responsible for dispatching index 3 (Beeper)
+	// elsewhere, since the Beeper is not one of this class's oscillators.
+	void get_channel_state( int index, gme_ay_channel_state_t* out ) const;
 
 public:
 	Ay_Apu();

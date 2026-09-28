@@ -211,7 +211,23 @@ blargg_err_t Ay_Emu::start_track_( int track )
 		}
 		check( len );
 		byte const* in = get_data( file, blocks, 0 ); blocks += 2;
-		if ( len > uint32_t (file.end - in) )
+		// nt-chiptune-player fork addition (Issue #1009 / ADR 0106 裁定 12): upstream did not
+		// check `in` for NULL here before computing `file.end - in` and memcpy()-ing from it.
+		// get_data() returns NULL for a data-block pointer with a corrupt/out-of-range relative
+		// offset (zero offset, or a target that would read past the file's end) -- reachable from
+		// a crafted/corrupt .ay whose block-list "data pointer" field is invalid while `addr`/`len`
+		// remain in range, since those three fields are validated independently upstream.
+		// `file.end - in` with `in == NULL` is undefined pointer arithmetic (and would in practice
+		// yield a huge unsigned value, defeating the very bounds check on the next line), and
+		// `memcpy(mem.ram + addr, NULL, len)` is undefined behavior with len > 0.
+		// Treat NULL the same way the surrounding code already treats "not enough data": warn and
+		// skip this block (len = 0), matching the block-size-overflow branch immediately above.
+		if ( !in )
+		{
+			set_warning( "Missing file data" );
+			len = 0;
+		}
+		else if ( len > uint32_t (file.end - in) )
 		{
 			set_warning( "Missing file data" );
 			len = file.end - in;
@@ -219,7 +235,12 @@ blargg_err_t Ay_Emu::start_track_( int track )
 		//debug_printf( "addr: $%04X, len: $%04X\n", addr, len );
 		if ( addr < ram_start && addr >= 0x400 ) // several tracks use low data
 			debug_printf( "Block addr in ROM\n" );
-		memcpy( mem.ram + addr, in, len );
+		// nt-chiptune-player fork addition (Issue #1009): `in` can be NULL here (see comment
+		// above); `len` is forced to 0 in that case, but memcpy(dst, NULL, 0) is itself
+		// technically UB per the C standard even though every real implementation treats it as
+		// a no-op. Skip the call outright rather than rely on that in practice.
+		if ( in )
+			memcpy( mem.ram + addr, in, len );
 
 		if ( file.end - blocks < 8 )
 		{
@@ -265,6 +286,7 @@ blargg_err_t Ay_Emu::start_track_( int track )
 
 	beeper_delta = int (apu.amp_range * 0.65);
 	last_beeper = 0;
+	beeper_toggle_count = 0; // nt-chiptune-player fork addition (Issue #1009): reset per track
 	apu.reset();
 	next_play = play_period;
 
@@ -345,6 +367,7 @@ void ay_cpu_out( Ay_Cpu* cpu, cpu_time_t time, unsigned addr, int data )
 		if ( emu.last_beeper != data )
 		{
 			emu.last_beeper = data;
+			emu.beeper_toggle_count++; // nt-chiptune-player fork addition (Issue #1009): monotonic, wraps
 			emu.beeper_delta = -delta;
 			emu.spectrum_mode = true;
 			if ( emu.beeper_output )
@@ -409,4 +432,53 @@ blargg_err_t Ay_Emu::run_clocks( blip_time_t& duration, int )
 	apu.end_frame( duration );
 
 	return 0;
+}
+
+// nt-chiptune-player fork addition (Issue #1009 / ADR 0106 裁定 7): see the
+// declaration comment in Ay_Emu.h and the gme_ay_channel_state_t doc comment
+// in gme.h for the field contract. Indices 0-2 dispatch to Ay_Apu; index 3
+// (Beeper) is filled here directly (it is not one of Ay_Apu's oscillators).
+void Ay_Emu::channel_state( int i, gme_ay_channel_state_t* out ) const
+{
+	require( (unsigned) i < osc_count );
+	if ( i < Ay_Apu::osc_count )
+	{
+		apu.get_channel_state( i, out );
+	}
+	else
+	{
+		memset( out, 0, sizeof *out );
+		out->beeper_toggle_count = beeper_toggle_count;
+	}
+	out->clock_rate = clock_rate();
+}
+
+// nt-chiptune-player fork addition (Issue #1009): C API for
+// gme_ay_channel_state (declared in gme.h). This file is only compiled when
+// USE_GME_AY is enabled (see gme/CMakeLists.txt), so no #ifdef guard is
+// needed here.
+extern "C" BLARGG_EXPORT gme_err_t gme_ay_channel_state( Music_Emu const* me, int index, gme_ay_channel_state_t* out )
+{
+	if ( !me || !out )
+		return "NULL parameter";
+	if ( me->type() != Ay_Emu::static_type() )
+		return "Not an AY emulator";
+	Ay_Emu const* ay = static_cast<Ay_Emu const*>( me );
+	if ( (unsigned) index >= (unsigned) ay->voice_count() )
+		return "Voice index out of range";
+	ay->channel_state( index, out );
+	return 0;
+}
+
+// nt-chiptune-player fork addition (Issue #1009): C API for
+// gme_ay_set_observe_interval_ms (declared in gme.h). Same rationale/contract
+// as gme_gbs_set_observe_interval_ms -- the type check goes through
+// gme_type_t because libgme is built with RTTI disabled.
+extern "C" BLARGG_EXPORT gme_err_t gme_ay_set_observe_interval_ms( Music_Emu* me, int msec )
+{
+	if ( !me )
+		return "NULL parameter";
+	if ( me->type() != Ay_Emu::static_type() )
+		return "Not an AY emulator";
+	return static_cast<Ay_Emu*>( me )->set_observe_interval_ms( msec );
 }

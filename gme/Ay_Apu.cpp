@@ -2,6 +2,8 @@
 
 #include "Ay_Apu.h"
 
+#include <string.h> // nt-chiptune-player fork addition: memset in get_channel_state
+
 /* Copyright (C) 2006 Shay Green. This module is free software; you
 can redistribute it and/or modify it under the terms of the GNU Lesser
 General Public License as published by the Free Software Foundation; either
@@ -392,4 +394,35 @@ void Ay_Apu::run_until( blip_time_t final_end_time )
 	assert( env.pos < 0 );
 
 	last_time = final_end_time;
+}
+
+// nt-chiptune-player fork addition (Issue #1009 / ADR 0106 裁定 7): read-only
+// snapshot of voice `index`'s raw registers (see gme_ay_channel_state in
+// gme.h). Field decode:
+//   - tone_period: 12-bit value combining regs[2i+1] low nibble (high byte)
+//     and regs[2i] (low byte) -- same combination write_data_() uses to
+//     compute osc.period (period_factor removed here since that factor is an
+//     internal emulation-clock detail, not part of the AY-3-8910 register
+//     contract).
+//   - tone_enabled/noise_enabled: regs[7] is active-low (a set bit disables
+//     the corresponding tone/noise -- see run_until()'s `tone_off`/
+//     `noise_off` masks), so this getter inverts the bit to the more
+//     intuitive "enabled" sense for the caller.
+//   - noise_period: regs[6] bits 0-4, shared by all 3 voices (there is only
+//     one noise generator on real AY-3-8910 hardware).
+//   - volume_reg: regs[8+index] verbatim (bit 4 = envelope-select, bits 0-3 =
+//     fixed level) -- unlike Gb_Apu::get_osc_state, this getter does not
+//     resolve envelope level to an instantaneous 0-15 value (ADR 0106 裁定 5
+//     treats envelope mode as a fixed max-volume approximation in core, not a
+//     per-sample readout).
+void Ay_Apu::get_channel_state( int index, gme_ay_channel_state_t* out ) const
+{
+	require( (unsigned) index < osc_count );
+	memset( out, 0, sizeof *out );
+
+	out->tone_period   = (unsigned short) ((regs [index * 2 + 1] & 0x0F) << 8 | regs [index * 2]);
+	out->tone_enabled  = (regs [7] & (1 << index)) ? 0 : 1;
+	out->noise_enabled = (regs [7] & (1 << (3 + index))) ? 0 : 1;
+	out->volume_reg    = regs [8 + index];
+	out->noise_period  = regs [6] & 0x1F;
 }

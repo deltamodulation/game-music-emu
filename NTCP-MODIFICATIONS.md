@@ -866,6 +866,50 @@ before and after.
 
 Files touched: `gme/Nsf_Emu.cpp`.
 
+### 2026-09-28 -- Add read-only `gme_ay_channel_state` / `gme_ay_set_observe_interval_ms` C API for AY (Issue #1009)
+
+Adds AY (ZX Spectrum / Amstrad CPC) support to nt-chiptune-player following the
+same pattern as the existing HES/NSF/SPC/GBS channel-state additions: `Ay_Emu`
+is a `Classic_Emu` subclass with no public per-channel state accessor and no
+opt-in observation-granularity control, both needed for nt-chiptune-player's
+visualization and its ADR 0062 observation-granularity contract.
+
+`Ay_Apu::get_channel_state(index, out)` (new member, `Ay_Apu.h`/`.cpp`) exposes
+voice `index`'s (0-2) raw tone period, mixer enable bits, volume register and
+the shared noise period, decoded from the otherwise-`private` `regs[]` array.
+`Ay_Emu::channel_state(i, out)` (new member, `Ay_Emu.h`/`.cpp`) dispatches
+indices 0-2 there and fills index 3 (the Beeper, which is not one of
+`Ay_Apu`'s oscillators) directly from a new `beeper_toggle_count` member that
+`ay_cpu_out()` increments whenever the beeper's `last_beeper` state toggles;
+it also fills `clock_rate` (from the existing but `protected` `Classic_Emu`
+member) for every index, since the Spectrum-vs-CPC clock-rate heuristic
+(`Ay_Emu::cpu_out_misc`) runs at emulation time with no public accessor.
+Unlike `gme_gbs_channel_state`, this new API does **not** resolve a
+fully-computed `keyon` -- the ntcp-side caller recomputes it from the raw
+fields, since (unlike GBS) every input the formula needs is already exposed.
+`Ay_Emu::set_observe_interval_ms(msec)` re-exports the existing `protected`
+`Classic_Emu::set_buffer_length_ms` (0 new lines added to `Classic_Emu`
+itself, same as the HES/NSF/SPC/GBS additions).
+
+Also fixes a latent NULL-pointer bug found while writing nt-chiptune-player's
+fuzz test for AY: `Ay_Emu::start_track_`'s data-block copy loop called
+`get_data()` for a block's data pointer and used the result (`file.end - in`,
+then `memcpy(mem.ram + addr, in, len)`) without checking it for NULL, even
+though the two other fields read from the same untrusted block-list entry
+(`addr`, `len`) already get their own validation just above. `get_data()`
+returns NULL when a relative-offset field is zero or points past the file's
+end, which a crafted/corrupt `.ay` can trigger for the data-pointer field
+while `addr`/`len` remain in range. `file.end - in` with `in == NULL` is
+undefined pointer arithmetic, and `memcpy` from NULL with `len > 0` is
+undefined behavior. This was not confirmed to be reachable by any real
+`.ay` file (nt-chiptune-player has zero real AY files at the time of this
+change) or caught by a sanitizer run (the sanitizer CI job was not
+dispatched for this change -- see nt-chiptune-player's ADR 0106 裁定 12); the
+fix is precautionary, matching the same category of defense-in-depth fix
+applied to other formats' fuzz-flagged corruption paths.
+
+Files touched: `gme/Ay_Apu.h`, `gme/Ay_Apu.cpp`, `gme/Ay_Emu.h`, `gme/Ay_Emu.cpp`.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork
