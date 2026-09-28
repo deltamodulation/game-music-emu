@@ -1,4 +1,5 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-09-28 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Sap_Apu.h"
 
@@ -294,6 +295,34 @@ void Sap_Apu::run_until( blip_time_t end_time )
 	poly4_pos = (poly4_pos + duration) % poly4_len;
 	poly5_pos = (poly5_pos + duration) % poly5_len;
 	polym_pos += duration; // will get %'d on next call
+}
+
+// nt-chiptune-player fork addition (Issue #1017): read-only snapshot of
+// oscillator `index`'s raw state (see gme_sap_channel_state in gme.h and the
+// declaration comment in Sap_Apu.h). The keyon gate mirrors run_until()'s
+// "silent side" branch exactly: !volume (AUDC low nibble * 2 == 0) OR DAC
+// mode (AUDC bit4, 0x10) OR the pure-tone-bypass inaudible-frequency case
+// ((AUDC & 0xA0) == 0xA0 -- bit5 "pure tone" AND bit7 "bypass poly5" both set
+// -- with period below run_until()'s `1789773 / 2 / max_frequency`
+// threshold). `period` is read directly from the osc struct rather than
+// recomputed here -- see the "always recalculated before use" comment on
+// osc_t::period and the declaration comment in Sap_Apu.h.
+void Sap_Apu::get_osc_state( int index, gme_sap_channel_state_t* out ) const
+{
+	require( (unsigned) index < osc_count );
+	memset( out, 0, sizeof *out );
+
+	osc_t const& osc = oscs [index];
+	int const osc_control = osc.regs [1];
+	int const volume = (osc_control & 0x0F) * 2;
+	bool const keyon = !( !volume || (osc_control & 0x10) ||
+			((osc_control & 0xA0) == 0xA0 && osc.period < 1789773 / 2 / max_frequency) );
+
+	out->keyon  = (unsigned char) keyon;
+	out->audf   = osc.regs [0];
+	out->audc   = osc.regs [1];
+	out->audctl = (unsigned char) control;
+	out->period = (unsigned int) osc.period;
 }
 
 void Sap_Apu::write_data( blip_time_t time, unsigned addr, int data )

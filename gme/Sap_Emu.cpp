@@ -1,4 +1,5 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-09-28 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Sap_Emu.h"
 
@@ -444,4 +445,34 @@ blargg_err_t Sap_Emu::run_clocks( blip_time_t& duration, int )
 		apu2.end_frame( duration );
 
 	return 0;
+}
+
+// nt-chiptune-player fork addition (LGPL-2.1 modification, Issue #1017): C API
+// for gme_sap_channel_state (declared in gme.h). This file is only compiled
+// when USE_GME_SAP is enabled (see gme/CMakeLists.txt), so no #ifdef guard is
+// needed here.
+extern "C" BLARGG_EXPORT gme_err_t gme_sap_channel_state( Music_Emu const* me, int index, gme_sap_channel_state_t* out )
+{
+	if ( !me || !out )
+		return "NULL parameter";
+	if ( me->type() != Sap_Emu::static_type() )
+		return "Not a SAP emulator";
+	Sap_Emu const* sap = static_cast<Sap_Emu const*>( me );
+	if ( (unsigned) index >= (unsigned) sap->voice_count() )
+		return "Voice index out of range";
+	sap->channel_state( index, out );
+	return 0;
+}
+
+// nt-chiptune-player fork addition (Issue #1017): C API for
+// gme_sap_set_observe_interval_ms (declared in gme.h). Same rationale/contract
+// as gme_gbs_set_observe_interval_ms -- the type check goes through
+// gme_type_t because libgme is built with RTTI disabled.
+extern "C" BLARGG_EXPORT gme_err_t gme_sap_set_observe_interval_ms( Music_Emu* me, int msec )
+{
+	if ( !me )
+		return "NULL parameter";
+	if ( me->type() != Sap_Emu::static_type() )
+		return "Not a SAP emulator";
+	return static_cast<Sap_Emu*>( me )->set_observe_interval_ms( msec );
 }

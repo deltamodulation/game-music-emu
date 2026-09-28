@@ -19,6 +19,8 @@ gme_hes_channel_state
 gme_hes_set_observe_interval_ms
 gme_nsf_channel_state
 gme_nsf_set_observe_interval_ms
+gme_sap_channel_state
+gme_sap_set_observe_interval_ms
 gme_spc_channel_state
 gme_spc_set_observe_interval_ms
 gme_identify_extension
