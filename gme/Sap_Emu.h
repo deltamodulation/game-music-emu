@@ -1,6 +1,7 @@
 // Atari XL/XE SAP music file emulator
 
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-09-28 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef SAP_EMU_H
 #define SAP_EMU_H
 
@@ -29,6 +30,26 @@ public:
 		char name      [256];
 		char copyright [ 32];
 	};
+
+	// nt-chiptune-player fork addition (Issue #1017): read-only per-channel
+	// state snapshot, dispatched to whichever POKEY chip owns voice `i` (see
+	// gme_sap_channel_state in gme.h). Index ordering matches set_voice()/
+	// gme_voice_count(): 0-3 = first chip (`apu`), 4-7 (stereo only) =
+	// second chip (`apu2`).
+	void channel_state( int i, gme_sap_channel_state_t* out ) const {
+		if ( i < Sap_Apu::osc_count )
+			apu.get_osc_state( i, out );
+		else
+			apu2.get_osc_state( i - Sap_Apu::osc_count, out );
+	}
+
+	// nt-chiptune-player fork addition (Issue #1017): opt-in observation
+	// granularity, delegated to the Classic_Emu base (see
+	// gme_sap_set_observe_interval_ms in gme.h). Sap_Emu is a Classic_Emu
+	// subclass, so this re-exports the existing protected member -- no new
+	// code is added to Classic_Emu itself (ADR 0060 裁定 2 制約 3).
+	blargg_err_t set_observe_interval_ms( int msec ) { return set_buffer_length_ms( msec ); }
+
 protected:
 	blargg_err_t track_info_( track_info_t*, int track ) const;
 	blargg_err_t load_mem_( byte const*, long );

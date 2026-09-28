@@ -866,6 +866,54 @@ before and after.
 
 Files touched: `gme/Nsf_Emu.cpp`.
 
+### 2026-09-28 -- Add read-only `gme_sap_channel_state` C API for SAP (Issue #1017)
+
+Adds a minimal, additions-only C API (`gme_sap_channel_state` /
+`gme_sap_set_observe_interval_ms` in `gme/gme.h`) for the SAP (Atari 8-bit
+`Sap_Apu`, POKEY) emulator, following the same design rationale as the
+GBS/SPC additions above (ADR 0023 classification 1: additions only, no
+existing behavior changed; ADR 0107 裁定 7).
+
+Unlike GBS/SPC (one fixed role per voice), all 4 POKEY oscillators share one
+struct shape: `gme_sap_channel_state_t` exposes `keyon`, the raw `audf` /
+`audc` registers, the *shared* `audctl` register duplicated into every
+channel's struct (a stereo SAP has two independent POKEY chips -- voices 0-3
+and 4-7 -- that can hold different AUDCTL values, so returning it per-channel
+avoids a third API/range-check surface for a chip-wide value), and the fully
+decoded effective `period` in CPU-clock units (the same value
+`Sap_Apu::calc_periods()` computes internally, folding in base-clock
+selection, 1.79MHz fast mode, and the two-channel 16-bit join) -- see ADR
+0107 裁定 7 for why the decoded period is exposed rather than just the raw
+`AUDF`. `keyon` is not a raw register bit: `Sap_Apu::get_osc_state()` (new,
+`gme/Sap_Apu.h` / `gme/Sap_Apu.cpp`) recomputes the same "would this voice
+currently be audible" condition `Sap_Apu::run_until()`'s silent-side branch
+uses (zero volume, DAC mode, or the pure-tone-bypass inaudible-frequency
+case) directly from the oscillator's registers, so a muted voice
+(`gme_mute_voice()`) still reads its true state (same rationale as the GBS
+addition's `Gb_Apu::get_osc_state()`, ADR 0071 mute-row keyboard display).
+`Sap_Emu::channel_state()` (new, `gme/Sap_Emu.h`) dispatches to `apu` for
+index 0-3 and `apu2` for index 4-7.
+
+`gme_sap_set_observe_interval_ms` mirrors `gme_gbs_set_observe_interval_ms`'s
+contract and mechanism exactly: `Sap_Emu` is a `Classic_Emu` subclass, so
+`Sap_Emu::set_observe_interval_ms()` (new, `gme/Sap_Emu.h`) is a one-line
+re-export of the existing protected `Classic_Emu::set_buffer_length_ms()` --
+no code is added to `Classic_Emu` itself (ADR 0060 裁定 2 制約 3, ADR 0107
+裁定 7).
+
+Both new C API entry points do their own `me->type() != Sap_Emu::static_type()`
+check (RTTI is disabled in this build) and `gme_sap_channel_state`
+range-checks `index` against `gme_voice_count()` (4 or 8, depending on the
+`STEREO` tag) before it reaches `Sap_Emu::channel_state()` /
+`Sap_Apu::get_osc_state()` (which also asserts the range via `require()`) --
+same discipline as the GBS/SPC entry points (a caller bug must not translate
+into an out-of-bounds `Sap_Apu::oscs` read across the C ABI boundary; in
+particular, a mono SAP's index 4-7 is rejected here, not silently read from
+`apu2`'s unreset oscillator state).
+
+Files touched: `gme/gme.h`, `gme/gme.exports`, `gme/Sap_Apu.h`,
+`gme/Sap_Apu.cpp`, `gme/Sap_Emu.h`, `gme/Sap_Emu.cpp`.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

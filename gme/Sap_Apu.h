@@ -1,11 +1,13 @@
 // Atari POKEY sound chip emulator
 
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-09-28 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef SAP_APU_H
 #define SAP_APU_H
 
 #include "blargg_common.h"
 #include "Blip_Buffer.h"
+#include "gme.h" // nt-chiptune-player fork addition (Issue #1017): gme_sap_channel_state_t
 
 class Sap_Apu_Impl;
 
@@ -21,6 +23,15 @@ public:
 	void write_data( blip_time_t, unsigned addr, int data );
 
 	void end_frame( blip_time_t );
+
+	// nt-chiptune-player fork addition (Issue #1017): read-only snapshot of
+	// oscillator `index`'s raw state (see gme_sap_channel_state in gme.h).
+	// Reads osc->period as last computed by calc_periods() (called from
+	// run_until(), in turn called at least once per rendered frame via
+	// end_frame()) -- no recalculation here, matching the "always
+	// recalculated before use" contract documented on the `period` field
+	// below. Safe to call between gme_play() calls only (not concurrently).
+	void get_osc_state( int index, gme_sap_channel_state_t* out ) const;
 
 public:
 	Sap_Apu();
