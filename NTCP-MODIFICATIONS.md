@@ -958,6 +958,98 @@ particular, a mono SAP's index 4-7 is rejected here, not silently read from
 Files touched: `gme/gme.h`, `gme/gme.exports`, `gme/Sap_Apu.h`,
 `gme/Sap_Apu.cpp`, `gme/Sap_Emu.h`, `gme/Sap_Emu.cpp`.
 
+### 2026-11-05 -- Add the standalone APU C API `gme_apu_*` (Issue #1946)
+
+Adds a C API that drives three of the fork's existing sound-chip classes
+directly from register writes, without a `Music_Emu` or CPU: the NES 2A03
+(`Nes_Apu`, optionally with the FDS `Nes_Fds_Apu`), the Game Boy DMG
+(`Gb_Apu`) and the HuC6280 PSG (`Hes_Apu`). nt-chiptune-player's VGM
+(register-log) engine uses it to play VGM logs of these chips with the same
+cores as its NSF / GBS / HES playback (nt-chiptune-player ADR 0152).
+
+Classification: ADR 0023 classification 1 (additions only, no existing
+behavior changed), as widened by ADR 0152 ruling 9 -- "additions that create
+and drive an existing class through a new entry point" are included. No
+existing function body, public structure or public function behavior is
+changed: the new translation unit only calls the classes' existing public
+members (constructors, `volume`, `treble_eq`, `osc_output`, `reset`,
+`write_register` / `write` / `write_data`, `end_frame`, `dmc_reader`,
+`get_osc_state`, and `Blip_Buffer`'s public members and `BLIP_READER_*`
+macros). No new `USE_GME_*` option: the sources it uses are already built
+for NSF / GBS / HES, and `USE_GME_VGM` stays off.
+
+Files touched: `gme/Ntcp_Apu_Api.cpp` (new), `gme/gme.h` (declarations and
+the normative contract comment), `gme/gme.exports` (10 names),
+`gme/CMakeLists.txt` (the new file is compiled only when `USE_GME_NSF`,
+`USE_GME_GBS` or `USE_GME_HES` is on; a chip type whose option is off makes
+`gme_apu_new` fail with "APU type not built").
+
+Entry points (the normative contract is the comment in `gme.h`): create
+(`gme_apu_new`), delete, reset, register write, render, per-voice mute, NES
+DMC memory image write, and channel-state readout (one function per existing
+struct: `gme_apu_nes_channel_state` / `gme_apu_gb_channel_state` /
+`gme_apu_huc6280_channel_state`, filling the existing
+`gme_nsf_channel_state_t` / `gme_gbs_channel_state_t` /
+`gme_hes_channel_state_t` unchanged via the existing `get_osc_state()`).
+
+Design points:
+
+- **Rendering is independent of call length.** Each internal step emulates
+  exactly to `Blip_Buffer::count_clocks(n)` (the smallest time that makes `n`
+  more samples available), so the time reached after any sequence of steps
+  depends only on the total number of samples produced. The stereo mix always
+  reads all three buffers (the `Stereo_Buffer::mix_stereo` formula); the
+  `Stereo_Buffer` switch to a center-only mix depends on which buffers were
+  written in a frame and would make output depend on step lengths.
+- **Requests longer than the Blip_Buffer are split inside** (steps of 256
+  frames; the buffer is 50 ms = 2448 samples at 48000 Hz, 408 at the 8000 Hz
+  minimum), because `Blip_Synth` checks its write position with `assert()`
+  only (unchecked under `NDEBUG`).
+- **Muted voices are routed to a discard buffer, never NULL** (NULL makes
+  `Gb_Apu` stop evaluating the oscillator and `Nes_Apu` "reduce emulation
+  accuracy"), the same idea as the 2026-09-22 `Nsf_Emu` `mute_sink_` change
+  (Issue #812) but done in the new code only. The discard buffer is never
+  `end_frame()`d, so every step writes within the first step-length of the
+  buffer, and it is cleared after every step (`clear_modified()` / `clear()`)
+  so unread samples do not pile up.
+- **Reset rebuilds the chip objects in place** (placement new on the existing
+  members; no allocation) and clears the buffers (and the NES DMC memory
+  image) first, so the following output is bit-exact with a freshly created
+  instance.
+- **Clock and rate limits**: sample rate 8000-96000 Hz; chip time units per
+  second between 4x the sample rate (keeps `Blip_Buffer`'s 16-bit ratio
+  precise) and 20,000,000 (keeps one step's clock count far inside
+  `blip_time_t`). The HuC6280 time unit is twice the PSG input clock
+  (`Hes_Apu` counts the waveform period as `period * 2`; `Hes_Emu` uses
+  7159091 Hz), so the input clock is doubled inside `gme_apu_new`.
+
+Values copied from the matching emulators (sources at the time of this
+change):
+
+- **Initial state after reset** (nt-chiptune-player ADR 0152 U-8, same as the
+  emulator's `start_track_`): NES = `Nes_Apu::reset( false, 0 )` (NTSC,
+  initial DMC DAC 0) then `$4015 = $0F` and `$4017 = $00` (`Nsf_Emu.cpp`
+  `start_track_`, with no PAL-only / DMC-init header flags), then
+  `Nes_Fds_Apu::reset()` when the FDS is present; Game Boy = `Gb_Apu::reset()`
+  then the 48 register bytes of `Gbs_Emu.cpp`'s `sound_data` written to
+  `$FF10-$FF3F` (`Gbs_Emu::start_track_`; NR50 = `$77`, NR51 = `$F3`,
+  NR52 = `$F1`, wave RAM `AC DD DA 48 ...`); HuC6280 = `Hes_Apu::reset()` only
+  (`Hes_Emu::start_track_`).
+- **Volume / equalization defaults**: NES = gain 1.4 (`Nsf_Emu` constructor
+  `set_gain( 1.4 )`), x0.75 when the FDS is present (`Nsf_Emu::init_sound`'s
+  `adjusted_gain` with one expansion chip), applied to `Nes_Apu` and
+  `Nes_Fds_Apu`; treble -1.0 dB and bass 80 Hz (`Nsf_Emu::nes_eq`). Game Boy =
+  gain 1.2 (`Gbs_Emu` constructor `set_gain( 1.2 )`), treble -1.0 dB and bass
+  120 Hz (`make_equalizer( -1.0, 120 )`). HuC6280 = gain 1.11 (`Hes_Emu`
+  constructor `set_gain( 1.11 )`), treble -1.0 dB and bass 60 Hz (the
+  `Music_Emu` default equalizer). The treble value is passed as
+  `blip_eq_t( treble )`, exactly as `Classic_Emu::set_equalizer_` does.
+
+Known limits: the NES frame counter runs at NTSC timing only (no PAL
+selection). `$4023` and `$4093-$409E` are ignored because the fork's FDS does
+not handle them. An instance is not thread-safe; distinct instances are
+independent.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

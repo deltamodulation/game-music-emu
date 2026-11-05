@@ -1,3 +1,4 @@
+# Modified 2026-11-05 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 if(NOT GME_BUILD_SHARED AND NOT GME_BUILD_STATIC)
     message(FATAL_ERROR "Both shared and static builds disabled. Please enable build of shared and/or static build of the GME.")
@@ -210,6 +211,14 @@ if(USE_GME_VGM)
                 Vgm_Emu_Impl.h
                 Ym2413_Emu.cpp
                 Ym2413_Emu.h
+        )
+endif()
+
+# nt-chiptune-player fork addition (Issue #1946 / ADR 0152): standalone APU C API
+# (gme_apu_* in gme.h). Uses only the APU classes listed above for NSF / GBS / HES.
+if(USE_GME_NSF OR USE_GME_GBS OR USE_GME_HES)
+    list(APPEND libgme_SRCS
+                Ntcp_Apu_Api.cpp
         )
 endif()
 

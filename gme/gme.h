@@ -6,6 +6,7 @@
 /* Modified 2026-09-28 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 /* Modified 2026-09-17 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 /* Modified 2026-09-18 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
+/* Modified 2026-11-05 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 
 /* Game_Music_Emu 0.6.6 */
 #ifndef GME_H
@@ -486,6 +487,96 @@ API is strictly opt-in and changes nothing for callers that ignore it.
 Not thread-safe: call only from the same thread as gme_play(), and not
 concurrently with one. */
 BLARGG_EXPORT gme_err_t gme_sap_set_observe_interval_ms( Music_Emu*, int msec );
+
+
+/******** Standalone APU (nt-chiptune-player fork addition) ********/
+
+/* nt-chiptune-player fork addition (Issue #1946 / ADR 0152): drive one of the
+fork's existing sound chips -- NES 2A03 (optionally with the FDS), Game Boy
+DMG, or HuC6280 PSG -- directly from register writes, without a Music_Emu or
+CPU (for register-log formats such as VGM). The chips are the same classes
+Nsf_Emu / Gbs_Emu / Hes_Emu use (Nes_Apu + Nes_Fds_Apu, Gb_Apu, Hes_Apu), so
+the sound matches those emulators. Additions only: no existing function or
+structure changes. This comment is the normative contract of the eight entry
+point kinds below (create, delete, reset, write, render, mute, DMC memory
+image, channel state; channel state is one function per existing struct).
+
+Threading: an instance is not thread-safe. Call every function for one
+instance from one serialized domain (the same thread as gme_apu_render, never
+concurrently with it). Distinct instances are independent (two of the same
+type can coexist, e.g. a "dual chip" log). No function throws. */
+
+typedef struct gme_apu_t gme_apu_t;
+
+/* Chip types for gme_apu_new() */
+enum { gme_apu_nes = 1, gme_apu_gb = 2, gme_apu_huc6280 = 3 };
+
+/* Flags for gme_apu_new(): gme_apu_flag_fds adds the Famicom Disk System
+sound (gme_apu_nes only). Whether the FDS exists is decided here only. */
+enum { gme_apu_flag_fds = 1 };
+
+/* Create a chip. clock_rate is the chip's input clock in Hz (NES: CPU clock,
+e.g. 1789772; Game Boy: 4194304; HuC6280: PSG clock, e.g. 3579545 -- the
+doubling Hes_Apu needs is done here). sample_rate is the output rate in Hz
+(8000..96000). Requires 4 * sample_rate <= clock_rate <= 20000000 (HuC6280:
+<= 10000000). On success sets *out and returns NULL. Returns an error string
+(and sets *out to NULL) for an invalid type or flags, an out-of-range clock or
+sample rate, a type not built into this library (USE_GME_NSF / USE_GME_GBS /
+USE_GME_HES off), or allocation failure. The initial state is what
+gme_apu_reset() produces. Volume and treble/bass equalization are the
+defaults of the matching emulator (see NTCP-MODIFICATIONS.md). The NES
+frame counter runs at NTSC timing. */
+BLARGG_EXPORT gme_err_t gme_apu_new( int type, int flags, long clock_rate, long sample_rate, gme_apu_t** out );
+
+/* Destroy a chip created by gme_apu_new(). NULL is ignored. */
+BLARGG_EXPORT void gme_apu_delete( gme_apu_t* );
+
+/* Return to the state right after gme_apu_new(): the chip registers, its
+pending output samples and internal buffers, and the NES DMC memory image
+(zeroed) are reset, so the following gme_apu_render() output is bit-exact with
+that of a freshly created chip. Mutes set with gme_apu_mute_voice() are kept.
+After the chip's own reset, the registers are brought to what the matching
+emulator's start_track writes: NES = $4015 = $0F and $4017 = $00 (then the FDS
+reset), Game Boy = the 48 bytes Gbs_Emu writes to $FF10-$FF3F (power on,
+NR50 = $77, NR51 = $F3, wave RAM), HuC6280 = nothing more. */
+BLARGG_EXPORT void gme_apu_reset( gme_apu_t* );
+
+/* Write `data` (low 8 bits) to the chip address `addr`. The write takes effect
+at the point where the previous gme_apu_render() ended (time 0 of the next
+one). Accepted addresses: NES $4000-$4017 except $4014 and $4016; FDS (only
+with gme_apu_flag_fds) $4040-$4092; Game Boy $FF10-$FF3F; HuC6280
+$0800-$0809. Any other address is ignored (including $4023 and $4093-$409E,
+which the fork's FDS does not handle). */
+BLARGG_EXPORT void gme_apu_write( gme_apu_t*, unsigned addr, int data );
+
+/* Write exactly `frames` stereo frames (16-bit, interleaved L/R) to `out`.
+NES output is mono and is written to both sides. Never allocates, locks or
+throws. The output depends only on the writes and on the total number of
+frames rendered before each write, not on how rendering is split into calls;
+a request longer than the internal Blip_Buffer is split internally. */
+BLARGG_EXPORT void gme_apu_render( gme_apu_t*, short* out, int frames );
+
+/* Mute (mute != 0) or unmute voice `index`. Voices: NES 0-4 = Square 1,
+Square 2, Triangle, Noise, DMC, and 5 = FDS (only with gme_apu_flag_fds);
+Game Boy 0-3 = Square 1, Square 2, Wave, Noise; HuC6280 0-5. A muted voice is
+still emulated into a discarded buffer (never NULL), so gme_apu_*_channel_state
+and the sequence are unaffected by muting. Returns an error string for an
+out-of-range index (nothing changes), NULL on success. */
+BLARGG_EXPORT gme_err_t gme_apu_mute_voice( gme_apu_t*, int index, int mute );
+
+/* Copy `size` bytes from `data` into the NES DMC memory image (64 KiB, the
+addresses the DMC reads) at `addr`. Bytes beyond $FFFF are dropped; size <= 0
+or addr > $FFFF does nothing; ignored for non-NES chips. */
+BLARGG_EXPORT void gme_apu_write_memory( gme_apu_t*, unsigned addr, void const* data, long size );
+
+/* Fill *out with voice `index`'s state, using the existing per-format structs
+unchanged (filled by the same get_osc_state() as gme_nsf_channel_state /
+gme_gbs_channel_state / gme_hes_channel_state). NES index 5 is the FDS.
+Returns NULL on success; returns an error string, leaving *out unmodified, if
+the chip is of another type or `index` is out of range. */
+BLARGG_EXPORT gme_err_t gme_apu_nes_channel_state( gme_apu_t const*, int index, gme_nsf_channel_state_t* out );
+BLARGG_EXPORT gme_err_t gme_apu_gb_channel_state( gme_apu_t const*, int index, gme_gbs_channel_state_t* out );
+BLARGG_EXPORT gme_err_t gme_apu_huc6280_channel_state( gme_apu_t const*, int index, gme_hes_channel_state_t* out );
 
 /* Disable/Enable echo effect for SPC files */
 /* Available since 0.6.4 */
