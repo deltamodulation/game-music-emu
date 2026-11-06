@@ -1,5 +1,5 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
-// Modified 2026-09-17 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
+// Modified 2026-09-17, 2026-11-06 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Spc_Emu.h"
 
@@ -399,6 +399,7 @@ void Spc_Emu::channel_state( int i, gme_spc_channel_state_t* out ) const
 	out->non          = (unsigned char) ((apu.read_dsp_reg( Spc_Dsp::r_non ) >> i) & 1);
 	out->noise_rate   = (unsigned char) (apu.read_dsp_reg( Spc_Dsp::r_flg ) & 0x1F);
 	out->envx         = (unsigned char) apu.read_dsp_reg( base | Spc_Dsp::v_envx );
+	out->srcn         = (unsigned char) apu.read_dsp_reg( base | Spc_Dsp::v_srcn ); // Issue #1933
 }
 
 // nt-chiptune-player fork addition (Issue #591 / ADR 0075 裁定 7): opt-in

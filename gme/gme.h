@@ -275,6 +275,16 @@ typedef struct gme_nsf_channel_state_t
 	unsigned char reserved1;   /* ABI parity with gme_hes_channel_state_t (was noise_freq); always 0, reserved */
 	short gain_l;              /* proxy amplitude (last synthesized output delta accumulator) */
 	short gain_r;              /* same as gain_l -- NES/expansion voices in this fork are mono-routed internally */
+	unsigned char duty_valid;  /* nt-chiptune-player fork addition (Issue #1933): non-zero if `duty` below carries a
+	                              meaningful pulse duty for this voice. Set for the square voices only (2A03 / MMC5
+	                              Square 1-2, VRC6 Pulse 1-2); 0 for triangle, noise, DMC, saw, FM, wavetable and
+	                              every other voice, and for a VRC6 pulse whose $9000/$A000 bit 7 (the "mode" flag
+	                              that forces a constant output at the volume) is set -- the duty setting has no
+	                              effect then. A zero-initialized struct therefore reads as "no duty". */
+	unsigned char duty;        /* raw duty setting, valid only when duty_valid is non-zero. 2A03 / MMC5: bits 7-6 of
+	                              the control register ($4000 / $4004 / $5000 / $5004), 0-3 (0 = 12.5%, 1 = 25%,
+	                              2 = 50%, 3 = 75% i.e. negated 25%). VRC6: bits 6-4 of $9000 / $A000, 0-7 (the
+	                              wave is high for duty + 1 steps of 16) */
 } gme_nsf_channel_state_t;
 
 /* Fill *out with channel `index`'s current state (0 <= index < gme_voice_count()).
@@ -295,8 +305,9 @@ BLARGG_EXPORT gme_err_t gme_nsf_set_observe_interval_ms( Music_Emu*, int msec );
 gme_hes_channel_state above): read-only per-channel state snapshot for the SPC
 (SNES S-DSP) emulator. Unlike the HES/NSF structs, this exposes only the four
 S-DSP register fields that nt-chiptune-player's visualizer actually derives a
-keycode/envelope from (ADR 0075 裁定 7) -- srcn/adsr/gain/outx are deliberately
-left out; the struct can grow append-only later if a use for them appears. */
+keycode/envelope from (ADR 0075 裁定 7) -- adsr/gain/outx are deliberately left
+out (srcn was appended later, Issue #1933); the struct can grow append-only
+further if a use for the rest appears. */
 /* Struct layout is frozen for ABI compatibility with the nt-chiptune-player
 JNI bridge -- append new fields at the end only; never reorder, resize, or
 remove existing fields. */
@@ -306,6 +317,10 @@ typedef struct gme_spc_channel_state_t
 	unsigned char  non;        /* non-zero if this voice's bit is set in the S-DSP NON (noise enable) register */
 	unsigned char  noise_rate; /* 5-bit S-DSP noise rate (FLG register bits 4-0), 0-31; shared by all voices */
 	unsigned char  envx;       /* 7-bit S-DSP per-voice envelope value (ENVX), 0 = silent */
+	unsigned char  srcn;       /* nt-chiptune-player fork addition (Issue #1933): S-DSP per-voice SRCN register (source
+	                              number, the BRR sample's index in the sample directory), 0-255, the register value
+	                              as the driver last wrote it. Not meaningful while `non` is set (a noise voice does
+	                              not play a BRR sample) */
 } gme_spc_channel_state_t;
 
 /* Fill *out with channel `index`'s current state (0 <= index < gme_voice_count(),
@@ -339,9 +354,9 @@ BLARGG_EXPORT gme_err_t gme_spc_set_observe_interval_ms( Music_Emu*, int msec );
 gme_hes_channel_state above): read-only per-channel state snapshot for the GBS
 (Game Boy Gb_Apu) emulator. Like the SPC struct (and unlike the HES/NSF 9-field
 shape), this exposes only the values nt-chiptune-player's visualizer actually
-derives a keycode/envelope from (ADR 0081 裁定 7) -- duty, sweep, wave RAM and
-the NR50/NR51 pan bits are deliberately left out; the struct can grow
-append-only later if a use for them appears. `keyon` is not a raw register bit:
+derives a keycode/envelope from (ADR 0081 裁定 7) -- sweep, wave RAM and the
+NR50/NR51 pan bits are deliberately left out (duty was appended later, Issue
+#1933); the struct can grow append-only further if a use for them appears. `keyon` is not a raw register bit:
 it is the fully-resolved "would this voice currently be audible" condition
 (same gate Gb_Apu::run_until uses, plus the Square 1 sweep-silence and
 Square/Wave out-of-range-frequency DC conditions Gb_Square::run / Gb_Wave::run
@@ -355,6 +370,7 @@ typedef struct gme_gbs_channel_state_t
 	unsigned char  keyon;  /* non-zero if this voice is currently audible (see rationale above) */
 	unsigned char  volume; /* raw volume/envelope register value. Voices 0-1 (Square 1/2) and 3 (Noise): 0-15 envelope. Voice 2 (Wave): 0-3 output-level code (0=mute,1=100%,2=50%,3=25%) -- NOT linear */
 	unsigned short period; /* raw period-related register value. Voices 0-1 (Square) and 2 (Wave): 11-bit frequency register ((NRx4 & 7) << 8 | NRx3). Voice 3 (Noise): raw NR43 byte (divisor code in bits 0-2, shift in bits 4-7) */
+	unsigned char  duty;   /* nt-chiptune-player fork addition (Issue #1933): raw duty setting, bits 7-6 of NR11 / NR21 (0 = 12.5%, 1 = 25%, 2 = 50%, 3 = 75%), 0-3. Voices 0-1 (Square) only; always 0 for voice 2 (Wave) and 3 (Noise), where it carries no meaning */
 } gme_gbs_channel_state_t;
 
 /* Fill *out with channel `index`'s current state (0 <= index < gme_voice_count(),

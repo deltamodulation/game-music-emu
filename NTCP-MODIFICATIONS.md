@@ -1050,6 +1050,37 @@ selection). `$4023` and `$4093-$409E` are ignored because the fork's FDS does
 not handle them. An instance is not thread-safe; distinct instances are
 independent.
 
+### 2026-11-06 -- Append pulse duty (NSF, GBS) and SPC source number to the channel-state structs (Issue #1933)
+
+Appends fields to three existing read-only channel-state structs, for
+nt-chiptune-player's keyboard-row display (ADR 0153): the pulse duty of the
+NSF and GBS square voices and the BRR source number (SRCN) of the SPC voices.
+
+- `gme_nsf_channel_state_t`: `duty_valid`, `duty` (appended after `gain_r`).
+  Filled by `Nes_Apu::get_osc_state` for Square 1-2 (`$4000` / `$4004`
+  bits 7-6, 0-3; the MMC5 squares share this code) and by
+  `Nes_Vrc6_Apu::get_osc_state` for Pulse 1-2 (`$9000` / `$A000` bits 6-4,
+  0-7; `duty_valid` is 0 while the "mode" bit 7 forces a constant output).
+  Every other voice leaves both at 0, so a zero-initialized struct reads as
+  "no duty". The VGM engine's `gme_apu_nes_channel_state` fills the same
+  struct through the same function.
+- `gme_gbs_channel_state_t`: `duty` (appended after `period`). Filled by
+  `Gb_Apu::get_osc_state` for Square 1-2 (NR11 / NR21 bits 7-6, 0-3), 0 for
+  Wave and Noise.
+- `gme_spc_channel_state_t`: `srcn` (appended after `envx`). The per-voice
+  SRCN register (`Spc_Dsp::v_srcn`) read through `Snes_Spc::read_dsp_reg`.
+
+Classification: ADR 0023 classification 1 (additions only, observation only).
+The existing fields keep their offsets and meaning (append-only, as the
+structs' comments require); no function body that produces sound is changed,
+so the output PCM is unchanged. Each value is read from the register bits the
+corresponding oscillator's `run()` reads (`Nes_Square::run`,
+`Nes_Vrc6_Apu::run_square`, `Gb_Square::run`; the S-DSP reads SRCN at key-on
+and at the loop point).
+
+Files touched: `gme/gme.h`, `gme/Nes_Apu.cpp`, `gme/Nes_Vrc6_Apu.cpp`,
+`gme/Gb_Apu.cpp`, `gme/Spc_Emu.cpp`.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

@@ -1,5 +1,5 @@
 // Nes_Snd_Emu 0.1.8. http://www.slack.net/~ant/
-// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
+// Modified 2026-09-12, 2026-11-06 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Nes_Vrc6_Apu.h"
 
@@ -85,6 +85,11 @@ void Nes_Vrc6_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) cons
 		bool const gate = (osc.regs[0] & 0x80) != 0;
 		out->enabled = (unsigned char) (gate_or_enabled && (gate || (osc.regs[0] & 0x0F) != 0));
 		out->channel_vol = (unsigned char) (osc.regs[0] & 0x0F);
+		// nt-chiptune-player fork addition (Issue #1933): raw duty setting, bits 6-4 of
+		// $9000 / $A000 -- the bits run_square() reads. Not meaningful while the "mode"
+		// bit (bit 7, `gate` above) forces the output to the constant volume.
+		out->duty_valid = (unsigned char) !gate;
+		out->duty = (unsigned char) ((osc.regs[0] >> 4) & 7);
 	}
 	else
 	{

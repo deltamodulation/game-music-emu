@@ -1,5 +1,5 @@
 // Gb_Snd_Emu 0.1.5. http://www.slack.net/~ant/
-// Modified 2026-09-18 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
+// Modified 2026-09-18, 2026-11-06 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Gb_Apu.h"
 
@@ -223,12 +223,14 @@ void Gb_Apu::get_osc_state( int index, gme_gbs_channel_state_t* out ) const
 			keyon = false;
 		out->volume = (unsigned char) osc.volume;
 		out->period = (unsigned short) freq;
+		out->duty = (unsigned char) (osc.regs [1] >> 6); // Issue #1933: NR11 bits 7-6, the bits Gb_Square::run() reads
 		break;
 	case 1: // Square 2
 		if ( (unsigned) (freq - 1) > 2040 )
 			keyon = false;
 		out->volume = (unsigned char) osc.volume;
 		out->period = (unsigned short) freq;
+		out->duty = (unsigned char) (osc.regs [1] >> 6); // Issue #1933: NR21 bits 7-6
 		break;
 	case 2: // Wave
 		if ( (unsigned) (freq - 1) > 2044 )

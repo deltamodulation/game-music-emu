@@ -1,5 +1,5 @@
 // Nes_Snd_Emu 0.1.8. http://www.slack.net/~ant/
-// Modified 2026-09-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
+// Modified 2026-09-12, 2026-11-06 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Nes_Apu.h"
 
@@ -327,6 +327,10 @@ void Nes_Apu::get_osc_state( int index, gme_nsf_channel_state_t* out ) const
 		out->enabled = (unsigned char) (osc.length_counter > 0 && !muted);
 		out->channel_vol = (unsigned char) volume;
 		out->period = (unsigned short) period;
+		// nt-chiptune-player fork addition (Issue #1933): raw duty select, bits 7-6 of
+		// the control register -- the same bits Nes_Square::run() reads.
+		out->duty_valid = 1;
+		out->duty = (unsigned char) ((sq.regs [0] >> 6) & 3);
 		break;
 	}
 	case 2: // triangle
