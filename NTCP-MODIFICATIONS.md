@@ -1110,8 +1110,13 @@ Classification (ADR 0023): the `parse_info` / `load_mem_` change alters the
 sound of NTSC-tagged files, so it is not classification 1; it is handled like
 the NSF mute-sink patch (Issue #812) -- no new classification, and the
 conditions for behavior-changing patches apply: (i) files without the `NTSC`
-tag render bit-identical PCM before and after (checked over the whole local
-real-data SAP corpus), (ii) the submodule-bump tripwire table in
+tag render the same PCM before and after, checked over the local real-data
+SAP corpus (5266 files, 6464 file/track pairs, 15 s each): 6455 pairs are
+identical; the other 9 pairs (7 files) are files whose output already differs
+from run to run in the unmodified pin `e2c5f56` (cause not yet known, tracked
+in nt-chiptune-player#2063), so their before/after comparison is inconclusive
+and they are excluded as an exception approved by the project owner
+(2026-11-11). (ii) the submodule-bump tripwire table in
 `core/src/hes/hes_engine.h` lists it, (iii) this entry plus the dated
 LGPL-2.1 section 2(a) notices in the modified files. The `clock_rate` field is
 classification 1 (addition only; existing fields keep offset and meaning).
