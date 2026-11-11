@@ -1,4 +1,5 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-11-12 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Music_Emu.h"
 
@@ -360,7 +361,16 @@ void Music_Emu::emu_play( long count, sample_t* out )
 	check( current_track_ >= 0 );
 	emu_time += count;
 	if ( current_track_ >= 0 && !emu_track_ended_ )
-		end_track_if_error( play_( count, out ) );
+	{
+		blargg_err_t err = play_( count, out );
+		if ( err )
+		{
+			// play_() can fail part way through and leave out [] partly unwritten;
+			// don't hand the caller's stale buffer contents back as samples
+			memset( out, 0, count * sizeof *out );
+			end_track_if_error( err );
+		}
+	}
 	else
 		memset( out, 0, count * sizeof *out );
 }

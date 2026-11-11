@@ -1123,6 +1123,42 @@ classification 1 (addition only; existing fields keep offset and meaning).
 
 Files touched: `gme/gme.h`, `gme/Sap_Emu.h`, `gme/Sap_Emu.cpp`.
 
+### 2026-11-12 -- Zero-fill the output of a `play_()` call that failed (nt-chiptune-player#2063)
+
+`Music_Emu::emu_play` called `end_track_if_error( play_( count, out ) )`. When
+`play_()` returns an error (for example `Sap_Emu::run_clocks` returning
+"Emulation error (illegal instruction)", or `Spc_Emu::play_` returning the
+`cpu_error` of its 48 kHz path), the samples from the point of failure on are
+never written, and `Music_Emu::play` does not report the error to the caller.
+The caller's buffer contents (uninitialized stack/heap, or the previous
+block's PCM) were therefore returned as if they were samples. Nothing in
+libgme reads uninitialized memory; the cause is the missing write
+(ASan/UBSan/MSan found no report inside libgme).
+
+- `gme/Music_Emu.cpp` `emu_play`: when `play_()` returns an error, fill `out`
+  with `count` zero samples, then call `end_track_if_error` as before. This is
+  the same zero fill the function already does once the track has ended. One
+  change covering every format that goes through `Music_Emu::play`.
+
+Rejected alternative: zeroing only the unwritten tail in
+`Classic_Emu::play_` just before its `RETURN_ERR`. It would keep the samples
+written before the failure, but every `play_` (e.g. `Spc_Emu::play_`) would
+need its own treatment and one would be missed.
+
+Classification (ADR 0023): the function body is rewritten and the output of a
+failed block changes, so it is not classification 1; it is not memory safety
+(2), not a defect in upstream's documented contract (3), not an NSF spec
+feature (4). Handled like the NSF mute-sink patch (Issue #812) -- no new
+classification, and the conditions for behavior-changing patches apply:
+(i) outputs of blocks that did not fail are unchanged (checked over the local
+real-data corpus by the nt-chiptune-player side, see the PR for #2063),
+(ii) the submodule-bump tripwire table in `core/src/hes/hes_engine.h` lists
+it, (iii) this entry plus the dated LGPL-2.1 section 2(a) notice at the top of
+the modified file. The files that cannot enter this path stay unchanged:
+HES/NSF/GBS/AY `run_clocks` never return an error.
+
+Files touched: `gme/Music_Emu.cpp`.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork
