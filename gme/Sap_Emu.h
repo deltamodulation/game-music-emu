@@ -2,6 +2,7 @@
 
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
 // Modified 2026-09-28 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
+// Modified 2026-11-11 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 #ifndef SAP_EMU_H
 #define SAP_EMU_H
 
@@ -24,8 +25,9 @@ public:
 		long music_addr;
 		int  type;
 		int  track_count;
-		int  fastplay;
+		int  fastplay;     // 0 until FASTPLAY is read; load_mem_ resolves it (262 NTSC / 312 PAL)
 		bool stereo;
+		bool ntsc;         // nt-chiptune-player fork addition (Issue #2051): NTSC tag present
 		char author    [256];
 		char name      [256];
 		char copyright [ 32];
@@ -41,6 +43,11 @@ public:
 			apu.get_osc_state( i, out );
 		else
 			apu2.get_osc_state( i - Sap_Apu::osc_count, out );
+		// nt-chiptune-player fork addition (Issue #2051): the CPU clock this
+		// emulator actually runs at (1789772 NTSC / 1773447 PAL), same for
+		// every index. Classic_Emu::clock_rate() is protected, so core cannot
+		// read it directly.
+		out->clock_rate = clock_rate();
 	}
 
 	// nt-chiptune-player fork addition (Issue #1017): opt-in observation

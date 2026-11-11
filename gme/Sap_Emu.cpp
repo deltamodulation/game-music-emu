@@ -1,5 +1,6 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
 // Modified 2026-09-28 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
+// Modified 2026-11-11 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Sap_Emu.h"
 
@@ -175,6 +176,13 @@ static blargg_err_t parse_info( byte const* in, long size, Sap_Emu::info_t* out 
 		{
 			out->stereo = true;
 		}
+		else if ( !strncmp( "NTSC", tag, tag_len ) )
+		{
+			// nt-chiptune-player fork addition (Issue #2051, LGPL-2.1 modification
+			// 2026-11-11): the NTSC tag takes no argument; load_mem_ picks the
+			// NTSC clock and default frame length from it.
+			out->ntsc = true;
+		}
 		else if ( !strncmp( "FASTPLAY", tag, tag_len ) )
 		{
 			out->fastplay = from_dec( in, line_end );
@@ -255,15 +263,24 @@ blargg_err_t Sap_Emu::load_mem_( byte const* in, long size )
 	info.init_addr  = -1;
 	info.play_addr  = -1;
 	info.music_addr = -1;
-	info.fastplay   = 312;
+	info.fastplay   = 0; // 0 = FASTPLAY not given (parse_info rejects <= 0); resolved below
+	info.ntsc       = false;
 	RETURN_ERR( parse_info( in, size, &info ) );
+	// nt-chiptune-player fork change (Issue #2051, LGPL-2.1 modification
+	// 2026-11-11): default frame length is 262 scanlines for NTSC, 312 for PAL;
+	// an explicit FASTPLAY wins. Decided after the whole header is read so the
+	// order of the NTSC and FASTPLAY lines does not matter.
+	if ( info.fastplay <= 0 )
+		info.fastplay = info.ntsc ? 262 : 312;
 
 	set_warning( info.warning );
 	set_track_count( info.track_count );
 	set_voice_count( Sap_Apu::osc_count << static_cast<int>(info.stereo) );
 	apu_impl.volume( gain() );
 
-	return setup_buffer( 1773447 );
+	// nt-chiptune-player fork change (Issue #2051): NTSC clock 1789772.5 Hz
+	// (truncated to integer) vs PAL 1773447 Hz.
+	return setup_buffer( info.ntsc ? 1789772 : 1773447 );
 }
 
 void Sap_Emu::update_eq( blip_eq_t const& eq )

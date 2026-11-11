@@ -1081,6 +1081,43 @@ and at the loop point).
 Files touched: `gme/gme.h`, `gme/Nes_Apu.cpp`, `gme/Nes_Vrc6_Apu.cpp`,
 `gme/Gb_Apu.cpp`, `gme/Spc_Emu.cpp`.
 
+### 2026-11-11 -- SAP: play NTSC-tagged files at the NTSC clock and frame length (Issue #2051)
+
+The SAP format specification defines an `NTSC` header tag (no argument) that
+selects the NTSC machine instead of the default PAL one: master clock
+1789772.5 Hz instead of 1773447 Hz, and a 262-scanline frame instead of 312
+(114 CPU cycles per scanline in both). Upstream `Sap_Emu` ignores the tag, so
+NTSC files played at the PAL clock (about 0.9 % low in pitch and tempo; about
+17 % slow in tempo if the file also has no `FASTPLAY`). This change implements
+the tag.
+
+- `gme/Sap_Emu.cpp` `parse_info`: reads the `NTSC` tag into a new
+  `Sap_Emu::info_t::ntsc` (`gme/Sap_Emu.h`).
+- `gme/Sap_Emu.cpp` `load_mem_`: `info.fastplay` starts at 0 ("not given"; a
+  `FASTPLAY` line still has to be > 0) and is resolved after the whole header
+  is read: an explicit `FASTPLAY` wins, otherwise 262 for NTSC and 312 for PAL.
+  `setup_buffer` gets 1789772 (the specification's 1789772.5 truncated to an
+  integer; the 0.5 Hz difference is about 0.28 ppm) for NTSC and 1773447 for
+  PAL.
+- `gme/gme.h`, `gme/Sap_Emu.h`: `gme_sap_channel_state_t` gets
+  `clock_rate` appended at the end (the clock the emulator actually uses, the
+  same for every index), filled in `Sap_Emu::channel_state()`, so the player's
+  keyboard display derives the pure-tone pitch from the real clock.
+  `Classic_Emu::clock_rate()` is protected, so the caller cannot read it
+  otherwise.
+
+Classification (ADR 0023): the `parse_info` / `load_mem_` change alters the
+sound of NTSC-tagged files, so it is not classification 1; it is handled like
+the NSF mute-sink patch (Issue #812) -- no new classification, and the
+conditions for behavior-changing patches apply: (i) files without the `NTSC`
+tag render bit-identical PCM before and after (checked over the whole local
+real-data SAP corpus), (ii) the submodule-bump tripwire table in
+`core/src/hes/hes_engine.h` lists it, (iii) this entry plus the dated
+LGPL-2.1 section 2(a) notices in the modified files. The `clock_rate` field is
+classification 1 (addition only; existing fields keep offset and meaning).
+
+Files touched: `gme/gme.h`, `gme/Sap_Emu.h`, `gme/Sap_Emu.cpp`.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork

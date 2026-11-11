@@ -7,6 +7,7 @@
 /* Modified 2026-09-17 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 /* Modified 2026-09-18 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 /* Modified 2026-11-05 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
+/* Modified 2026-11-11 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md */
 
 /* Game_Music_Emu 0.6.6 */
 #ifndef GME_H
@@ -482,6 +483,7 @@ typedef struct gme_sap_channel_state_t
 	unsigned char audc;   /* raw AUDC register (distortion/volume, oscs[i].regs[1]) */
 	unsigned char audctl; /* raw shared AUDCTL register of this voice's POKEY chip (voices 0-3: first chip; 4-7 (stereo only): second chip) */
 	unsigned int  period; /* fully-decoded effective period in CPU-clock units, same formula as Sap_Apu::calc_periods() */
+	long          clock_rate; /* all indices: CPU clock the emulator runs at, Hz (1789772 if the file has the NTSC tag, else 1773447; Issue #2051) */
 } gme_sap_channel_state_t;
 
 /* Fill *out with channel `index`'s current state (0 <= index < gme_voice_count(),
