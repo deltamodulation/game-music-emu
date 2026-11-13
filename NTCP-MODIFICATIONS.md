@@ -9,7 +9,7 @@ https://github.com/deltamodulation/game-music-emu on branch
 
 game-music-emu is licensed under the **GNU Lesser General Public License,
 version 2.1 or later (LGPL-2.1+)**. See `license.txt` in this repository for
-the full license text. This file exists to satisfy LGPL-2.1 §2(a), which
+the full license text. This file exists to satisfy LGPL-2.1 §2(b), which
 requires prominent notice of, and a description of, any modified files.
 
 Corresponding source for this fork (including this modification history) is
@@ -67,7 +67,7 @@ Files touched: `gme/gme.h`, `gme/gme.exports`, `gme/Hes_Apu.h`,
 ### 2026-08-19 -- LGPL modification notices, cleanup, and documentation
 
 - Added an in-file "Modified <dates> by nt-chiptune-player project" notice
-  (LGPL-2.1 §2(a)) to the header of each file touched by the 2026-08-17
+  (LGPL-2.1 §2(b)) to the header of each file touched by the 2026-08-17
   change, and added this file.
 - `gme/Hes_Emu.cpp`: replaced a C-style cast with `static_cast` in
   `gme_hes_channel_state()` for readability/consistency with the rest of the
@@ -126,7 +126,7 @@ Verified locally (nt-chiptune-player coordinator, pre-push):
   added mask is a no-op on any file this engine already played correctly.
 
 Files touched: `gme/Hes_Cpu.cpp` (one-line fix + explanatory comment + in-file
-LGPL-2.1 §2(a) modification notice).
+LGPL-2.1 §2(b) modification notice).
 
 ### 2026-08-31 -- Fix `cpu_write` always dispatching on `mmr[0]` instead of the target page (Issue #192)
 
@@ -168,7 +168,7 @@ Verified locally (nt-chiptune-player coordinator, pre-push):
   regression in the existing golden-test corpus either.
 
 Files touched: `gme/hes_cpu_io.h` (four-line fix across `cpu_write` and
-`CPU_WRITE_FAST_` + in-file LGPL-2.1 §2(a) modification notice -- this file had
+`CPU_WRITE_FAST_` + in-file LGPL-2.1 §2(b) modification notice -- this file had
 no prior in-file notice, unlike its siblings, since it was untouched by the
 2026-08-17/2026-08-19 additions-only changes).
 
@@ -233,7 +233,7 @@ under `NDEBUG`, where it would silently over-allocate instead.
 upstream's 50 ms batch; nothing in the existing code paths reads any new state,
 because the patch stores none.
 
-The per-file LGPL-2.1 §2(a) modification notice is added here as a **new** line
+The per-file LGPL-2.1 §2(b) modification notice is added here as a **new** line
 rather than by extending the existing `Modified <dates>` line, so that this patch
 keeps its additions-only property (see the verification below).
 
@@ -782,7 +782,7 @@ read across the C ABI boundary).
 Files touched: `gme/gme.h`, `gme/gme.exports`, `gme/Gb_Apu.h`,
 `gme/Gb_Apu.cpp`, `gme/Gbs_Emu.h`, `gme/Gbs_Emu.cpp`.
 
-### 2026-09-18 -- Add missing per-file LGPL-2.1 2(a) notices to `Gb_Apu.cpp` / `Gbs_Emu.cpp` (nt-chiptune-player PR #738 review)
+### 2026-09-18 -- Add missing per-file LGPL-2.1 2(b) notices to `Gb_Apu.cpp` / `Gbs_Emu.cpp` (nt-chiptune-player PR #738 review)
 
 The GBS addition above (2026-09-18 entry) added the dated notice comment
 (`Modified 2026-09-18 by nt-chiptune-player project -- see
@@ -1118,7 +1118,7 @@ in nt-chiptune-player#2063), so their before/after comparison is inconclusive
 and they are excluded as an exception approved by the project owner
 (2026-11-11). (ii) the submodule-bump tripwire table in
 `core/src/hes/hes_engine.h` lists it, (iii) this entry plus the dated
-LGPL-2.1 section 2(a) notices in the modified files. The `clock_rate` field is
+LGPL-2.1 section 2(b) notices in the modified files. The `clock_rate` field is
 classification 1 (addition only; existing fields keep offset and meaning).
 
 Files touched: `gme/gme.h`, `gme/Sap_Emu.h`, `gme/Sap_Emu.cpp`.
@@ -1153,11 +1153,62 @@ classification, and the conditions for behavior-changing patches apply:
 (i) outputs of blocks that did not fail are unchanged (checked over the local
 real-data corpus by the nt-chiptune-player side, see the PR for #2063),
 (ii) the submodule-bump tripwire table in `core/src/hes/hes_engine.h` lists
-it, (iii) this entry plus the dated LGPL-2.1 section 2(a) notice at the top of
+it, (iii) this entry plus the dated LGPL-2.1 section 2(b) notice at the top of
 the modified file. The files that cannot enter this path stay unchanged:
 HES/NSF/GBS/AY `run_clocks` never return an error.
 
 Files touched: `gme/Music_Emu.cpp`.
+
+### 2026-11-13 -- SAP: stop INIT/PLAYER on the return PC, not on the byte at the return address (nt-chiptune-player#2064)
+
+`Sap_Emu::cpu_jsr` calls INIT and PLAYER with `idle_addr - 1` (`idle_addr` =
+`$FEFF`, `Sap_Cpu.h`) pushed as the return address, so an RTS leaves PC at
+`$FEFF`. Upstream detects the return only by the byte at `$FEFF` being 0
+(BRK): `Sap_Cpu::run`'s `handle_brk` stops on a BRK at `idle_addr` or above,
+and `Sap_Emu::run_clocks` reads `r.pc == idle_addr` as "returned".
+`start_track_` zero-fills RAM before loading the blocks, so normally
+`$FEFF` is 0. When a data block of the file covers `$FEFF`, or INIT writes to
+`$FEFF` while it runs, the byte is no longer 0 and the return is executed as an
+ordinary instruction: an unimplemented opcode ends in
+"Emulation error (illegal instruction)", a jump to `$FF00` or above ends in
+the same error, and anything else runs on silently. A SAP file that uses
+`$FEFF` is valid, so this is a logic bug of upstream's existing code, not a
+format restriction.
+
+- `gme/Sap_Cpu.cpp` `Sap_Cpu::run`: right after the opcode fetch
+  (`pc++`), `if ( pc == idle_addr + 1 ) goto idle_done;`. `idle_done` does
+  `pc--`, so PC after the stop is `$FEFF` as before. The memory is not
+  looked at, so both the "block covers `$FEFF`" and the "INIT writes
+  `$FEFF`" cases work. This is the same test `Hes_Cpu.cpp` and `Gb_Cpu.cpp`
+  already use for their `idle_addr`.
+- Unchanged: the return address, the value `cpu_jsr` pushes, the clocks spent
+  before the stop (0, the same as the BRK at `$FEFF` costs: `clock_table[0]`
+  is 0), and everything in `Sap_Emu` (`run_clocks`, `run_routine`).
+  A song whose `$FEFF` is 0 stops at the same point in the same state as before.
+- Known limit: code that **executes** an instruction starting at `$FEFF` for a
+  reason other than a return is now treated as a return and stops (hardware
+  would run it). Such a song was already broken whenever `$FEFF` is not 0.
+
+Rejected alternatives: choosing the return address dynamically so it does not
+collide with the loaded blocks (does not fix INIT writing to it); moving the
+return address into the I/O area as well (changes the value pushed for every
+song and drops the detection of BRK at `$FF00` and above as a failure);
+writing 0 to `$FEFF` before each call (destroys the song's data and does not
+fix INIT writing to it).
+
+Classification (ADR 0023): upstream's existing logic mishandles a valid file,
+so this is classification 3 (a logic bug of upstream's code), not a new
+classification. The conditions for behavior-changing patches apply: (i) the
+output of songs whose `$FEFF` is 0 at the return is unchanged (checked against
+real data by the nt-chiptune-player side, see the PR for #2064), (ii) the
+submodule-bump tripwire table in `core/src/hes/hes_engine.h` lists it (L-37),
+(iii) this entry plus the dated LGPL-2.1 section 2(b) notice at the top of the
+modified file.
+
+Also in this commit: every reference to the LGPL-2.1 modification-notice clause in
+this file now says section 2(b), which is the clause that requires the notice.
+
+Files touched: `gme/Sap_Cpu.cpp`, `NTCP-MODIFICATIONS.md`.
 
 ## Known upstream bugs (not modified)
 

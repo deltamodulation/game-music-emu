@@ -1,4 +1,5 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
+// Modified 2026-11-13 by nt-chiptune-player project -- see NTCP-MODIFICATIONS.md
 
 #include "Sap_Cpu.h"
 
@@ -134,6 +135,11 @@ loop:
 	uint8_t opcode = mem [pc];
 	pc++;
 	uint8_t const* instr = mem + pc;
+
+	// INIT/PLAYER returned (cpu_jsr pushed idle_addr - 1). Stop on the PC alone,
+	// so music data or INIT writes at idle_addr don't turn the return into code.
+	if ( pc == idle_addr + 1 )
+		goto idle_done;
 
 	static uint8_t const clock_table [256] =
 	{// 0 1 2 3 4 5 6 7 8 9 A B C D E F
