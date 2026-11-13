@@ -912,6 +912,119 @@ imm##op:
 
 // Unofficial
 
+	// Stable NMOS unofficial opcodes ("NMOS 6510 Unintended Opcodes" v0.98,
+	// "Stable Opcodes"; the 6502C in Atari 8-bit computers works the same).
+	// Unstable ones ($8B, $AB, $93, $9B, $9C, $9E, $9F) and JAM stay unimplemented.
+	// Decimal mode is ignored for RRA/ISC/ARR, as for ADC/SBC here.
+	case 0x0B: case 0x2B: // ANC #imm
+		nz = (a &= data);
+		c = a << 1;
+		pc++;
+		goto loop;
+
+	case 0x4B: // ALR #imm
+		a &= data;
+		c = a << 8;
+		nz = (a >>= 1);
+		pc++;
+		goto loop;
+
+	case 0x6B: // ARR #imm
+		a = nz = (c >> 1 & 0x80) | ((a & data) >> 1);
+		c = a << 2; // C = bit 6
+		status = (status & ~st_v) | ((a ^ (a << 1)) & st_v); // V = bit 6 ^ bit 5
+		pc++;
+		goto loop;
+
+	case 0xCB: // SBX #imm
+		nz = (a & x) - data;
+		c = ~nz;
+		x = (uint8_t) nz;
+		nz &= 0xFF;
+		pc++;
+		goto loop;
+
+	{
+		uint16_t addr; // pc is left on the last operand byte, as in CPX abs
+
+	case 0x03: case 0x23: case 0x43: case 0x63: case 0x83: case 0xA3: case 0xC3: case 0xE3: // (zp,X)
+		IND_X( addr )
+		goto unofficial;
+	case 0x13: case 0x33: case 0x53: case 0x73: case 0xD3: case 0xF3: // (zp),Y read-modify-write
+		IND_Y( NO_PAGE_CROSSING, addr )
+		goto unofficial;
+	case 0xB3: // LAX (zp),Y
+		IND_Y( HANDLE_PAGE_CROSSING, addr )
+		goto unofficial;
+	case 0x07: case 0x27: case 0x47: case 0x67: case 0x87: case 0xA7: case 0xC7: case 0xE7: // zp
+		addr = data;
+		goto unofficial;
+	case 0x17: case 0x37: case 0x57: case 0x77: case 0xD7: case 0xF7: // zp,X
+		addr = uint8_t (data + x);
+		goto unofficial;
+	case 0x97: case 0xB7: // zp,Y
+		addr = uint8_t (data + y);
+		goto unofficial;
+	case 0x0F: case 0x2F: case 0x4F: case 0x6F: case 0x8F: case 0xAF: case 0xCF: case 0xEF: // abs
+		addr = GET_ADDR();
+		pc++;
+		goto unofficial;
+	case 0x1F: case 0x3F: case 0x5F: case 0x7F: case 0xDF: case 0xFF: // abs,X read-modify-write
+		addr = GET_ADDR() + x;
+		pc++;
+		goto unofficial;
+	case 0x1B: case 0x3B: case 0x5B: case 0x7B: case 0xDB: case 0xFB: // abs,Y read-modify-write
+		addr = GET_ADDR() + y;
+		pc++;
+		goto unofficial;
+	case 0xBF: case 0xBB: // LAX abs,Y / LAS abs,Y
+		HANDLE_PAGE_CROSSING( data + y );
+		addr = GET_ADDR() + y;
+		pc++;
+	unofficial:
+		FLUSH_TIME();
+		if ( (opcode & 0xE0) == 0x80 ) // SAX
+		{
+			WRITE( addr, a & x );
+			CACHE_TIME();
+			pc++;
+			goto loop;
+		}
+		data = READ( addr );
+		if ( (opcode & 0xE0) == 0xA0 ) // LAX, LAS
+		{
+			if ( opcode == 0xBB )
+			{
+				data &= GET_SP();
+				SET_SP( data );
+			}
+			a = x = nz = data;
+			CACHE_TIME();
+			pc++;
+			goto loop;
+		}
+		switch ( opcode >> 5 )
+		{
+		case 0: c = data << 1; data = (uint8_t) c; break;                              // SLO: ASL
+		case 1: { int t = c >> 8 & 1; c = data << 1; data = (uint8_t) (c | t); break; } // RLA: ROL
+		case 2: c = data << 8; data >>= 1; break;                                      // SRE: LSR
+		case 3: { int t = c >> 1 & 0x80; c = data << 8; data = t | data >> 1; break; }  // RRA: ROR
+		case 6: data = (uint8_t) (data - 1); break;                                    // DCP: DEC
+		default: data = (uint8_t) (data + 1); break;                                   // ISC: INC
+		}
+		WRITE( addr, data );
+		CACHE_TIME();
+		switch ( opcode >> 5 )
+		{
+		case 0: nz = (a |= data); pc++; goto loop; // ORA
+		case 1: nz = (a &= data); pc++; goto loop; // AND
+		case 2: nz = (a ^= data); pc++; goto loop; // EOR
+		case 3: goto imm0x65;                      // ADC
+		case 6: goto imm0xC5;                      // CMP
+		default: goto imm0xE5;                     // SBC
+		}
+	}
+
 	// SKW - Skip word
 	case 0x1C: case 0x3C: case 0x5C: case 0x7C: case 0xDC: case 0xFC:
 		HANDLE_PAGE_CROSSING( data + x );/*FALLTHRU*/

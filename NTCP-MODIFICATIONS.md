@@ -1210,6 +1210,60 @@ this file now says section 2(b), which is the clause that requires the notice.
 
 Files touched: `gme/Sap_Cpu.cpp`, `NTCP-MODIFICATIONS.md`.
 
+### 2026-11-13 -- SAP: add the stable NMOS 6502 unofficial opcodes to `Sap_Cpu::run` (nt-chiptune-player#2072)
+
+`Sap_Cpu::run` implemented all 151 official MCS6500 opcodes but only 28 of the 105
+unofficial ones (`$EB`, and the 1-, 2- and 3-byte NOPs). The other 77 fell into
+the `default` of the opcode `switch`, which sets `illegal_encountered`, so
+`Sap_Emu::run_clocks` returned "Emulation error (illegal instruction)". A SAP
+file whose player uses an unofficial opcode that the Atari 8-bit 6502C
+("SALLY") executes normally (e.g. `LAX abs`, `$AF`) therefore stopped with an
+error on its first frame. Upstream implements only part of the opcode set and
+treats the rest as unimplemented; this is a missing feature, not a logic bug.
+
+- `gme/Sap_Cpu.cpp` `Sap_Cpu::run`: new `case`s for the 58 stable unofficial
+  opcodes that were unimplemented, in the "Unofficial" section of the `switch`:
+  SLO `$03 $07 $0F $13 $17 $1B $1F`, RLA `$23 $27 $2F $33 $37 $3B $3F`,
+  SRE `$43 $47 $4F $53 $57 $5B $5F`, RRA `$63 $67 $6F $73 $77 $7B $7F`,
+  DCP `$C3 $C7 $CF $D3 $D7 $DB $DF`, ISC `$E3 $E7 $EF $F3 $F7 $FB $FF`
+  (7 each), SAX `$83 $87 $8F $97`, LAX `$A3 $A7 $AF $B3 $B7 $BF`, ANC `$0B $2B`,
+  ALR `$4B`, ARR `$6B`, SBX `$CB`, LAS `$BB`. The effective address is computed
+  per addressing mode (as a `uint16_t`, so it wraps at 64 KiB like the official
+  opcodes), then one shared body runs. The read-modify-write opcodes do their
+  shift/rotate/inc/dec and then jump to the existing ORA/AND/EOR/ADC/CMP/SBC code.
+- Behaviour follows two documents only: "NMOS 6510 Unintended Opcodes -- no more
+  secrets" v0.98 (groepaz/solution, 2023-12-24), "Stable Opcodes", and
+  "Documentation for the NMOS 65xx/85xx Instruction Set" (John West and Marko
+  Makela, 64doc rev 1.8, 1994). No other emulator's code or output was used.
+- Approximations equal to the existing official opcodes: decimal mode is ignored
+  (RRA, ISC, ARR, like ADC/SBC here); a read-modify-write opcode writes memory
+  once (the real chip writes the old value first), like `INC abs` here.
+- Cycles: `clock_table` is used as it is (its base cycles for these 58 opcodes
+  match the documents). The page-crossing `+1` is applied only to LAX `(zp),Y`
+  (`$B3`), LAX `abs,Y` (`$BF`) and LAS `abs,Y` (`$BB`); the indexed
+  read-modify-write opcodes take a fixed cycle count.
+- Still unimplemented, so still the same error: the 7 unstable opcodes
+  (`$8B $AB $93 $9B $9C $9E $9F`: ANE, LAX #imm, SHA, SHX, SHY, TAS -- their
+  result depends on chip/temperature or on RDY and page crossing) and the 12 JAM
+  opcodes (`$02 $12 $22 $32 $42 $52 $62 $72 $92 $B2 $D2 $F2`, which halt a
+  real CPU).
+- Unchanged: the 151 official opcodes and the 28 already implemented unofficial
+  ones take exactly the code path they took before; `Sap_Emu` and `Sap_Apu` are
+  not touched. Only a song that executes one of the 58 added opcodes behaves
+  differently, and such a song used to end in the error above.
+
+Classification (ADR 0023): not an addition-only change (the output of input
+that used to fail changes) and not a memory-safety fix. It is a missing
+feature of the same kind as the `NTSC` support of the 2026-11-11 entry, so it
+takes no new classification and the conditions for behavior-changing patches
+apply: (i) the output of every song that executes none of the added opcodes is
+unchanged (checked against real data by the nt-chiptune-player side, see the PR
+for #2072), (ii) the submodule-bump tripwire table in `core/src/hes/hes_engine.h`
+lists it (L-38), (iii) this entry plus the dated LGPL-2.1 section 2(b) notice at
+the top of the modified file.
+
+Files touched: `gme/Sap_Cpu.cpp`, `NTCP-MODIFICATIONS.md`.
+
 ## Known upstream bugs (not modified)
 
 Bugs found in upstream code during nt-chiptune-player development that this fork
